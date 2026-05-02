@@ -1,22 +1,33 @@
 # `@lacneu/twenty-openclaw`
 
-Twenty CRM REST API plugin for [OpenClaw](https://openclaw.ai). Lets an
-OpenClaw agent read and (eventually) modify Twenty workspaces — People,
-Companies, Opportunities, Notes, Tasks — with workspace whitelisting,
-approval gating on destructive operations, an optional global read-only
-switch, and a small set of opinionated business helpers (dedup, enrich,
-bulk import).
+Twenty CRM plugin for [OpenClaw](https://openclaw.ai). Lets an OpenClaw
+agent **discover, model and operate** any Twenty workspace — read and
+write the standard entities (People, Companies, Opportunities, Notes,
+Tasks), create custom objects and fields on the fly via the Metadata
+API, then CRUD their records — with workspace whitelisting, approval
+gating on every destructive operation, an optional global read-only
+switch, and a small set of opinionated business helpers (export, dedup,
+bulk import, similarity search, relationship summary).
 
-> **Status:** P0 + P1 + P2 + P3. The plugin currently ships:
+> **Status: P0 → P7 shipped.** 58 tools, end-to-end validated live
+> against `crm.lacneu.com` (Ataraxis). The plugin currently ships:
 >
-> - 1 introspection tool (`twenty_workspace_info`)
-> - 9 read tools (list/get on People, Companies, Opportunities, Notes, Tasks)
-> - 1 cross-record activities tool (`twenty_activities_list_for`)
-> - **15 write tools** — `create`/`update`/`delete` on the same five entities
-> - **`before_tool_call` approval hook** gating every destructive operation
->
-> P4 business helpers (dedup, enrich, bulk import) are not yet shipped —
-> see the [Roadmap](#roadmap).
+> - **1** introspection tool (`twenty_workspace_info`).
+> - **9** typed read tools (list/get on People, Companies,
+>   Opportunities, Notes, Tasks).
+> - **1** cross-record activities timeline (`twenty_activities_list_for`).
+> - **15** typed write tools (`create`/`update`/`delete` on the same
+>   five entities).
+> - **6** business helpers (`export`, `people_find_similar`,
+>   `people_dedup`, `companies_dedup`, `bulk_import_csv`,
+>   `summarize_relationship`).
+> - **10** Twenty Metadata API tools (custom-objects + fields lifecycle).
+> - **5** generic record-dispatch tools that work on **any** entity,
+>   standard or custom (`record_list/get/create/update/delete`).
+> - **12** dashboard tools — build, modify, and inspect dashboards
+>   (PageLayouts + tabs + widgets + chart-data) directly from the chat.
+> - **`before_tool_call` approval hook** gating 19 destructive ops by
+>   default.
 
 ---
 
@@ -27,12 +38,14 @@ bulk import).
 | Plugin id | `twenty-openclaw` |
 | npm package | `@lacneu/twenty-openclaw` |
 | OpenClaw compat | `pluginApi >= 2026.4.0`, `minGatewayVersion >= 2026.4.0` |
+| Twenty server tested | 2.1 (REST + Metadata REST) |
 | License | MIT |
 | Tools prefix | `twenty_*` |
 
-The plugin talks to the Twenty REST API (`/rest/...`) using a single API
-key sent as `Authorization: Bearer <key>`. It refuses to call any
-workspace UUID that isn't in `allowedWorkspaceIds`.
+The plugin talks to the Twenty REST API (`/rest/...`) and the Twenty
+Metadata REST API (`/rest/metadata/...`) using a single API key sent as
+`Authorization: Bearer <key>`. It refuses to call any workspace UUID
+that isn't in `allowedWorkspaceIds`.
 
 ## Install
 
@@ -80,8 +93,21 @@ substitution.
             "twenty_dedup_auto_merge",
             "twenty_bulk_import_csv",
             "twenty_bulk_delete",
-            "twenty_custom_object_delete",
-            "twenty_field_delete"
+            "twenty_metadata_object_create",
+            "twenty_metadata_object_update",
+            "twenty_metadata_object_delete",
+            "twenty_metadata_field_create",
+            "twenty_metadata_field_update",
+            "twenty_metadata_field_delete",
+            "twenty_record_delete",
+            "twenty_dashboard_delete",
+            "twenty_dashboard_tab_delete",
+            "twenty_dashboard_widget_delete",
+            "twenty_dashboard_replace_layout"
+          ],
+          "allowedImportPaths": [
+            "/home/node/.openclaw/",
+            "/tmp/"
           ],
           "readOnly": false,
           "logLevel": "info"
@@ -99,49 +125,215 @@ substitution.
 | `serverUrl` | string | `https://crm.lacneu.com` | Base URL of the Twenty server (no trailing slash). |
 | `allowedWorkspaceIds` | string[] | `[]` | Whitelist of workspace UUIDs. Empty list ⇒ every workspace call is rejected. |
 | `defaultWorkspaceId` | string | first allowed | Workspace UUID used when a tool doesn't specify one. Must be in `allowedWorkspaceIds`. |
-| `approvalRequired` | string[] | 10 destructive tool names | Triggers an approval prompt via the `before_tool_call` hook. Enforced as of P3 — defaults gate every `*_delete`. |
-| `readOnly` | boolean | `false` | When true, every mutating tool is rejected at the plugin layer before any HTTP call. |
+| `approvalRequired` | string[] | 19 destructive tool names | Triggers an approval prompt via the `before_tool_call` hook. |
+| `allowedImportPaths` | string[] | `["/home/node/.openclaw/", "/tmp/"]` | Host-side prefix whitelist for `bulk_import_csv`. Validated with `fs.realpathSync` to defeat symlink + `..` traversal attacks. |
+| `readOnly` | boolean | `false` | When true, every tool with `mutates: true` is rejected at the plugin layer before any HTTP call. |
 | `logLevel` | string | `info` | `debug` includes request bodies (be mindful of PII). |
 
 ## Tools
 
-### Currently shipped
+### Introspection (1)
 
 | Tool | Description | Mutates? |
 |---|---|---|
-| `twenty_workspace_info` | List all metadata objects (standard + custom) of the configured workspace. | No |
-| `twenty_people_list` / `_get` | List + fetch-by-id People with cursor pagination. | No |
-| `twenty_people_create` | Create a Person (`name`, `emails`, `jobTitle`, `city`, `companyId`). | Yes |
-| `twenty_people_update` | Partial PATCH on a Person by UUID. | Yes |
-| `twenty_people_delete` | Soft-delete a Person (`deletedAt` set, recoverable). Approval-gated. | Yes |
+| `twenty_workspace_info` | List all metadata objects (standard + custom) of the configured workspace, with field counts. | No |
+
+### Typed read (9 + 1 timeline)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_people_list` / `_get` | List + fetch-by-id People. Cursor pagination via `pageInfo.endCursor` + `starting_after`. | No |
 | `twenty_companies_list` / `_get` | List + fetch-by-id Companies. | No |
-| `twenty_companies_create` / `_update` | Create / partial-update a Company. | Yes |
-| `twenty_companies_delete` | Soft-delete a Company. Approval-gated. | Yes |
 | `twenty_opportunities_list` / `_get` | List + fetch-by-id Opportunities. | No |
-| `twenty_opportunities_create` / `_update` | Create / partial-update an Opportunity. | Yes |
-| `twenty_opportunities_delete` | Soft-delete an Opportunity. Approval-gated. | Yes |
 | `twenty_notes_list` | List Notes. (Use `twenty_activities_list_for` for record-attached notes.) | No |
-| `twenty_notes_create` / `_update` | Create / partial-update a Note. | Yes |
-| `twenty_notes_delete` | Soft-delete a Note. Approval-gated. | Yes |
 | `twenty_tasks_list` | List Tasks. (Use `twenty_activities_list_for` for record-attached tasks.) | No |
-| `twenty_tasks_create` / `_update` | Create / partial-update a Task. | Yes |
-| `twenty_tasks_delete` | Soft-delete a Task. Approval-gated. | Yes |
-| `twenty_activities_list_for` | Cross-record timeline (notes + tasks) attached to a Person/Company/Opportunity. | No |
+| `twenty_activities_list_for` | Cross-record timeline (notes + tasks) attached to a Person, Company, or Opportunity. | No |
 
-**Soft-delete contract.** All `*_delete` tools issue
-`DELETE /rest/<entity>/{id}?soft_delete=true`. The Twenty OpenAPI default is
-HARD delete (`soft_delete=false`); this plugin overrides that explicitly so
-records remain in the database with a `deletedAt` timestamp and are
-recoverable through the Twenty UI or a future `twenty_<entity>_restore`
-tool. Hard-delete is intentionally not exposed in this release.
+Filter syntax follows the Twenty REST conventions, e.g.
+`name[ilike]:%acme%`, `domainName.primaryLinkUrl[ilike]:%acme.com%`,
+`employees[gte]:50`, `createdAt[gte]:2026-01-01`.
 
-### Planned (P4 — business helpers)
+### Typed write (15)
 
-- `twenty_enrich` — enrich a Person/Company from public data sources.
-- `twenty_dedup_*` — find and merge duplicates.
-- `twenty_find_similar` — semantic search across records.
-- `twenty_bulk_import_csv` / `twenty_bulk_delete` — bulk operations.
-- `twenty_<entity>_restore` — undo a soft-delete.
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_people_create` / `_update` / `_delete` | Full CUD on People. `_delete` is approval-gated. | Yes |
+| `twenty_companies_create` / `_update` / `_delete` | Full CUD on Companies. `_delete` is approval-gated. | Yes |
+| `twenty_opportunities_create` / `_update` / `_delete` | Full CUD on Opportunities. `_delete` is approval-gated. | Yes |
+| `twenty_notes_create` / `_update` / `_delete` | Full CUD on Notes. `_delete` is approval-gated. | Yes |
+| `twenty_tasks_create` / `_update` / `_delete` | Full CUD on Tasks. `_delete` is approval-gated. | Yes |
+
+**Soft-delete contract.** The 5 typed `*_delete` tools issue
+`DELETE /rest/<entity>/{id}?soft_delete=true`. Records remain in the
+database with a `deletedAt` timestamp and stay restorable through the
+Twenty UI. Hard-delete on entity records is intentionally not exposed.
+
+> **Note — restore endpoint not exposed.** Twenty 2.1 declares
+> `PATCH /rest/restore/<entity>/{id}` in OpenAPI but the server returns
+> 400 BadRequest at runtime, and the GraphQL alternative
+> (`restorePerson` mutation) returns `RECORD_NOT_FOUND`. The factory
+> pattern remains in git history at tag `v0.2.0` and will be re-added
+> once Twenty fixes the upstream bug. In the meantime, restore through
+> the Twenty UI.
+
+### Business helpers (6)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_export` | Paginate any entity (typed or custom) to JSON or CSV. RFC 4180 escape, dot-notation flatten of nested objects (`name.firstName`, `domainName.primaryLinkUrl`, ...). | No |
+| `twenty_people_find_similar` | Find candidate matches for a Person by exact `email[ilike]`, then fallback to `name.firstName` / `name.lastName` `ilike`. Deterministic, no fuzzy library. | No |
+| `twenty_people_dedup` | Group People sharing the same email. Read-only (no auto-merge). | No |
+| `twenty_companies_dedup` | Group Companies sharing the same `domainName.primaryLinkUrl`. Read-only. | No |
+| `twenty_bulk_import_csv` | Import a CSV in chunked POST batches (Twenty REST max 60 per call). Path is validated against `allowedImportPaths` with `realpathSync` to defeat symlink + `..` bypass. Supports `dry_run`. Approval-gated. | Yes |
+| `twenty_summarize_relationship` | Count notes/tasks/calendar events on a Person or Company over a configurable window (`since` / `until`). Returns counts + first/last activity timestamps. **No scoring algorithm** — agent reasons over the facts. | No |
+
+### Twenty Metadata API (10)
+
+These tools call `/rest/metadata/objects` and `/rest/metadata/fields`
+and let the agent **shape the workspace itself** without leaving the
+chat.
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_metadata_objects_list` | List standard + custom objects (alias of the introspection tool with richer filtering). | No |
+| `twenty_metadata_object_get` | Fetch one object by id, including its full field list. | No |
+| `twenty_metadata_object_create` | Create a custom object (`nameSingular`, `namePlural`, `labelSingular`, `labelPlural`, optional `icon`, `description`). Approval-gated. | Yes |
+| `twenty_metadata_object_update` | Patch an existing custom object's labels/icon/description. Approval-gated. | Yes |
+| `twenty_metadata_object_delete` | **HARD delete** a custom object — irreversible, drops every record. Approval-gated. | Yes |
+| `twenty_metadata_fields_list` | List fields. With `objectMetadataId` filter, routes to `GET /rest/metadata/objects/{id}` (Twenty rejects this filter on the `/fields` query string). | No |
+| `twenty_metadata_field_get` | Fetch one field by id. | No |
+| `twenty_metadata_field_create` | Create a field (`type` + Twenty-validated `options`). Loose schema — Twenty validates the options server-side against its 25+ field types. Approval-gated. | Yes |
+| `twenty_metadata_field_update` | Patch a field's labels/options. Approval-gated. | Yes |
+| `twenty_metadata_field_delete` | **HARD delete** a field — irreversible, drops the column. Approval-gated. | Yes |
+
+**Synchronous schema regeneration.** After
+`metadata_object_create`, the new `/rest/<plural>` endpoint is
+available within ~50 ms. The plugin does **not** poll — the very next
+`record_create` call against the new entity succeeds.
+
+### Generic record dispatch (5)
+
+CRUD on any entity (standard or custom) parameterised by entity name.
+Composes naturally with the Metadata tools: agent creates a custom
+object via P5 → populates records via P6, no plugin redeploy needed.
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_record_list` | List records of any entity. Same filter/pagination semantics as the typed list tools. | No |
+| `twenty_record_get` | Fetch one record by id. | No |
+| `twenty_record_create` | Create a record. Loose body schema (`additionalProperties: true`). | Yes |
+| `twenty_record_update` | Patch a record. | Yes |
+| `twenty_record_delete` | Soft-delete a record. **Always** approval-gated regardless of entity. | Yes |
+
+The entity name is regex-validated pre-network (`^[a-zA-Z][a-zA-Z0-9]*$`)
+to reject path-traversal attempts (`people/../../etc/passwd` → rejected
+before any HTTP call is made).
+
+### Dashboards (12 tools)
+
+Build, modify, and inspect Twenty dashboards from the chat. Mirrors the
+exact LLM contract Twenty's own internal AI agent uses (port of
+`twenty-server/src/modules/dashboard/tools/`), so the agent gets a
+proven authoring surface — without needing the agent to learn Twenty's
+internals.
+
+A Twenty dashboard is the union of a `dashboards` workspace record
+(with `title`, `pageLayoutId`, `position`) and a `PageLayout` of
+`type=DASHBOARD` (containing tabs, themselves containing widgets on a
+12-column grid). These tools coordinate both layers transparently.
+
+#### Dashboard-level (5)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_dashboards_list` | Paginated list of workspace dashboards (id, title, pageLayoutId, timestamps). | No |
+| `twenty_dashboard_get` | Single call returning dashboard + PageLayout + tabs + widgets (REST + GraphQL joined). | No |
+| `twenty_dashboard_create_complete` | Cascade creation: layout + dashboard record + first tab + N widgets in one tool call. Returns every id created. | Yes |
+| `twenty_dashboard_duplicate` | Wraps Twenty's `duplicateDashboard` mutation (records, layout, tabs, widgets cloned). | Yes |
+| `twenty_dashboard_delete` | Soft-delete the dashboard record + HARD destroy the PageLayout. **Approval-gated.** | Yes |
+| `twenty_dashboard_replace_layout` | Atomic refactor via `updatePageLayoutWithTabsAndWidgets`. Anything not listed is destroyed. **Approval-gated.** | Yes |
+
+#### Tab-level (3)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_dashboard_tab_add` | `createPageLayoutTab`. Auto-computes `position` to the next slot when omitted. | Yes |
+| `twenty_dashboard_tab_update` | `updatePageLayoutTab` (title / position / layoutMode partial). | Yes |
+| `twenty_dashboard_tab_delete` | HARD destroy a tab and every widget it contains. **Approval-gated.** | Yes |
+
+#### Widget-level (4)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_dashboard_widget_add` | `createPageLayoutWidget` with the full configuration union — AGGREGATE_CHART (KPI), GAUGE_CHART, BAR_CHART, LINE_CHART, PIE_CHART, RECORD_TABLE, IFRAME, STANDALONE_RICH_TEXT. The tool description embeds the per-type schema decision tree so the LLM can author configurations without round-tripping. | Yes |
+| `twenty_dashboard_widget_update` | `updatePageLayoutWidget` (partial patch on title / type / gridPosition / objectMetadataId / configuration / conditionalAvailabilityExpression). | Yes |
+| `twenty_dashboard_widget_delete` | HARD destroy a widget. **Approval-gated.** | Yes |
+| `twenty_dashboard_widget_data` | Compute the rendered data for a chart (BAR / LINE / PIE) by dispatching to Twenty's chart-data resolvers. KPI charts (AGGREGATE / GAUGE) return a hint pointing to the record aggregation API. Lets the agent **read the same numbers the user sees on the dashboard**. | No |
+
+#### Grid system
+
+12 columns (0-11). Typical sizes: KPI rowSpan 2-4, charts 6-8. Full
+width = `columnSpan: 12`, half = 6, third = 4, quarter = 3.
+
+#### Configuration recipes (excerpt)
+
+| Chart | Required fields |
+|---|---|
+| `AGGREGATE_CHART` (KPI) | `aggregateFieldMetadataId`, `aggregateOperation` |
+| `BAR_CHART` | + `primaryAxisGroupByFieldMetadataId`, `layout` (VERTICAL\|HORIZONTAL). For RELATION/composite groupBy: also `primaryAxisGroupBySubFieldName` (e.g. `"name"`). |
+| `LINE_CHART` | + `primaryAxisGroupByFieldMetadataId` (typically a date field, with `primaryAxisDateGranularity`) |
+| `PIE_CHART` | + `groupByFieldMetadataId` (different field name from BAR/LINE!) |
+| `GAUGE_CHART` | + `rangeMin`, `rangeMax` |
+| `RECORD_TABLE` | + `viewId` (must create a TABLE view first; reusing a record-index view is forbidden) |
+| `IFRAME` | + `url` |
+| `STANDALONE_RICH_TEXT` | + `body.markdown` |
+
+Aggregations available: `COUNT`, `COUNT_UNIQUE_VALUES`, `COUNT_EMPTY`,
+`COUNT_NOT_EMPTY`, `COUNT_TRUE`, `COUNT_FALSE`, `SUM`, `AVG`, `MIN`,
+`MAX`, `PERCENTAGE_EMPTY`, `PERCENTAGE_NOT_EMPTY`.
+
+Date granularities for time-bucketed charts: `DAY`, `WEEK`, `MONTH`,
+`QUARTER`, `YEAR`, `DAY_OF_THE_WEEK`, `MONTH_OF_THE_YEAR`,
+`QUARTER_OF_THE_YEAR`.
+
+#### Approval gating philosophy
+
+Only **irreversible destructions** are gated by default:
+`dashboard_delete`, `dashboard_replace_layout`, `tab_delete`,
+`widget_delete`. Construction tools (`*_add`, `*_update`,
+`create_complete`, `duplicate`) are **not gated** — the LLM iterates
+during build (add → check → tweak), and approval prompts on every step
+would cripple the flow.
+
+#### Required permission
+
+The Twenty API key must hold the `LAYOUTS` permission flag. Workspace-
+admin keys inherit it automatically; restricted keys require an admin
+to grant it explicitly through Twenty's role configuration.
+
+## Custom data modelling workflow (live demo)
+
+End-to-end flow exercised against the Ataraxis 2CF workspace:
+
+```text
+1. Agent: "I need to track ICOPE diagnostics for our patients"
+2. metadata_object_create  →  Diagnostic ICOPE  (icopeDiagnostics)
+   • Approval prompt → operator approves
+3. metadata_field_create   →  dateEvaluation     (DATE)
+4. metadata_field_create   →  scoreCognitif      (NUMBER)
+5. metadata_field_create   →  scoreMobilite      (NUMBER)
+6. metadata_field_create   →  person             (RELATION many_to_one → Person)
+   • Twenty auto-creates the inverse field `diagnosticsIcope` on Person
+7. record_create           →  first ICOPE diagnostic for John Doe
+   • Operator: "approval — yes, this is the format I want"
+8. record_list             →  back-reference works through the inverse field
+9. record_update           →  fix a wrong score
+10. record_delete (gated)  →  soft-delete the demo record
+```
+
+Every destructive step (`metadata_*_create`, `*_update`, `*_delete`,
+`record_delete`) prompts the operator through the active OpenClaw
+channel before any HTTP call.
 
 ## Approval gating (`before_tool_call`)
 
@@ -165,7 +357,7 @@ list, override `approvalRequired` in `plugins.entries.twenty-openclaw.config`:
 
 ```bash
 openclaw config set 'plugins.entries.twenty-openclaw.config.approvalRequired' \
-  '["twenty_people_delete","twenty_companies_delete","twenty_opportunities_delete","twenty_notes_delete","twenty_tasks_delete"]' \
+  '["twenty_people_delete","twenty_metadata_object_delete","twenty_record_delete"]' \
   --strict-json
 ```
 
@@ -232,11 +424,29 @@ npm run build
   script, CI/Release workflows. ✅
 - **P2** — domain read tools (list/get for the five entities + cross-record
   activities timeline). ✅
-- **P3** — write tools (create/update/delete on the five entities) +
-  `before_tool_call` approval gating on every destructive operation. ✅
-  *(this release)*
-- **P4** — business helpers (enrich, dedup, find_similar, bulk import,
-  restore). 🟡
+- **P3** — typed write tools (create/update/delete on the five entities)
+  + `before_tool_call` approval gating on every destructive operation. ✅
+- **P4** — business helpers: `export`, `people_find_similar`,
+  `people_dedup`, `companies_dedup`, `bulk_import_csv`,
+  `summarize_relationship`. ✅
+  *(restore + enrich dropped from scope — see CHANGELOG 0.3.0.)*
+- **P5** — Twenty Metadata API: 10 tools to create / update / delete
+  custom objects and fields. ✅
+- **P6** — Generic record dispatch: 5 tools to CRUD any entity (standard
+  or custom). ✅
+- **P7** — Dashboards: 12 tools to build / modify / inspect dashboards
+  (PageLayout + tabs + widgets + chart-data). ✅
+  *(approval gates only irreversible destructions; construction stays
+  friction-free)*
+
+### Future
+
+- `twenty_<entity>_restore` once Twenty fixes the upstream REST/GraphQL
+  restore bug.
+- `twenty_enrich_company` once a concrete data provider is selected
+  (free-tier limits + GDPR for cabinet conseil to validate).
+- Real OpenClaw OTEL tracing through the runtime tracer (waiting on SDK
+  exposure).
 
 ## License
 

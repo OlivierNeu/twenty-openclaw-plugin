@@ -27,6 +27,9 @@ import { createApprovalHook } from "./hooks/approval.js";
 import { buildActivitiesTools } from "./tools/activities.js";
 import { buildBulkTools } from "./tools/bulk.js";
 import { buildCompaniesTools } from "./tools/companies.js";
+import { buildDashboardTools } from "./tools/dashboards.js";
+import { buildDashboardTabTools } from "./tools/dashboard-tabs.js";
+import { buildDashboardWidgetTools } from "./tools/dashboard-widgets.js";
 import { buildDedupTools } from "./tools/dedup.js";
 import { buildExportTools } from "./tools/export.js";
 import { buildMetadataTools } from "./tools/metadata.js";
@@ -119,6 +122,15 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
   //      default (delete-on-anything is the only path-traversal-resistant
   //      destructive operation; create/update remain ungated to match the
   //      per-entity precedent).
+  // P7: dashboards — 12 tools (5 dashboard-level, 3 tab-level, 4 widget-
+  //      level) backed by Twenty's PageLayout / PageLayoutTab /
+  //      PageLayoutWidget GraphQL endpoints (`/metadata`) plus the
+  //      barChartData / lineChartData / pieChartData read endpoints.
+  //      Mirrors the LLM tools Twenty's own internal AI agent uses so
+  //      the OpenClaw agent can build, modify, and inspect dashboards.
+  //      Approval gates only the irreversible destructions
+  //      (dashboard_delete, tab_delete, widget_delete, replace_layout)
+  //      so the LLM can iterate on construction without friction.
   const allTools = [
     ...buildWorkspaceTools(client),
     ...buildPeopleTools(client),
@@ -135,6 +147,9 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
     ...buildSummarizeTools(client),
     ...buildMetadataTools(client),
     ...buildRecordTools(client),
+    ...buildDashboardTools(client),
+    ...buildDashboardTabTools(client),
+    ...buildDashboardWidgetTools(client),
   ];
 
   for (const tool of allTools) {

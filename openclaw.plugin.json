@@ -1,7 +1,7 @@
 {
   "id": "twenty-openclaw",
   "name": "Twenty",
-  "description": "Twenty CRM REST API plugin for OpenClaw — manage people, companies, opportunities, notes, tasks across one or more Twenty workspaces with workspace_id whitelist and approval gating on destructive ops",
+  "description": "Twenty CRM plugin for OpenClaw — manage people / companies / opportunities / notes / tasks, model custom objects + fields via the Metadata API, and build / modify / inspect dashboards (charts, tabs, widgets), all gated by workspace whitelist and approval prompts on destructive operations.",
   "version": "0.1.0",
   "configSchema": {
     "type": "object",
@@ -49,7 +49,11 @@
           "twenty_metadata_field_create",
           "twenty_metadata_field_update",
           "twenty_metadata_field_delete",
-          "twenty_record_delete"
+          "twenty_record_delete",
+          "twenty_dashboard_delete",
+          "twenty_dashboard_tab_delete",
+          "twenty_dashboard_widget_delete",
+          "twenty_dashboard_replace_layout"
         ],
         "description": "Tool names that trigger an approval prompt via the `before_tool_call` hook before being executed. Defaults to every destructive operation."
       },

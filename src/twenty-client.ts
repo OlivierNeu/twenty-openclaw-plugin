@@ -275,4 +275,106 @@ export class TwentyClient {
     // throws on the last attempt.
     throw new TwentyApiError(lastStatus, lastErrorBody, path);
   }
+
+  /**
+   * Issue a GraphQL request against Twenty's metadata endpoint
+   * (`POST <serverUrl>/metadata`). Used by dashboard / page-layout tools
+   * — every PageLayout, PageLayoutTab, PageLayoutWidget, and chart-data
+   * resolver lives behind this single endpoint.
+   *
+   * Reuses the same Bearer auth as REST and the same retry/backoff
+   * policy. Throws {@link TwentyApiError} when:
+   *   - the HTTP status is non-2xx after retries
+   *   - the GraphQL response carries an `errors` array (status is 200
+   *     in that case but the operation failed at the field level)
+   *
+   * The query / variables are passed as-is — callers are responsible for
+   * crafting a valid GraphQL document.
+   */
+  async postGraphQL<TData = unknown>(
+    query: string,
+    variables: Record<string, unknown> = {},
+    opts: { signal?: AbortSignal; endpoint?: "metadata" | "graphql" } = {},
+  ): Promise<TData> {
+    const endpoint = opts.endpoint ?? "metadata";
+    const path = `/${endpoint}`;
+    const url = this.config.serverUrl + path;
+    const headers = this.buildHeaders();
+    const body = JSON.stringify({ query, variables });
+
+    const spanName = `twenty.graphql.${endpoint}`;
+    const t0 = Date.now();
+    if (this.config.logLevel === "debug") {
+      this.logger.debug?.(
+        `${spanName} start query=${query.slice(0, 120).replace(/\s+/g, " ")}`,
+      );
+    }
+
+    let attempt = 0;
+    let lastErrorBody = "";
+    let lastStatus = 0;
+
+    while (attempt <= MAX_RETRIES) {
+      const resp = await this.fetchImpl(url, {
+        method: "POST",
+        headers,
+        body,
+        signal: opts.signal,
+      });
+
+      if (resp.ok) {
+        const text = await resp.text();
+        const dt = Date.now() - t0;
+        if (this.config.logLevel === "debug") {
+          this.logger.debug?.(
+            `${spanName} end status=${resp.status} ms=${dt}`,
+          );
+        }
+        let parsed: { data?: TData; errors?: Array<{ message: string }> };
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          throw new TwentyApiError(
+            resp.status,
+            `non-JSON GraphQL response: ${text.slice(0, 300)}`,
+            path,
+          );
+        }
+        if (parsed.errors && parsed.errors.length > 0) {
+          // Twenty surfaces validation, permission and not-found errors
+          // here with HTTP 200. Bubble them up as TwentyApiError so the
+          // tool wrapper can map them to a user-readable failure.
+          const messages = parsed.errors.map((e) => e.message).join(" | ");
+          throw new TwentyApiError(200, messages, path);
+        }
+        return (parsed.data ?? ({} as TData)) as TData;
+      }
+
+      lastStatus = resp.status;
+      lastErrorBody = await resp.text();
+
+      if (!RETRY_STATUSES.has(resp.status) || attempt === MAX_RETRIES) {
+        const dt = Date.now() - t0;
+        if (this.config.logLevel === "debug") {
+          this.logger.debug?.(
+            `${spanName} end status=${resp.status} ms=${dt} (final)`,
+          );
+        }
+        throw new TwentyApiError(resp.status, lastErrorBody, path);
+      }
+
+      const retryAfter = resp.headers.get("retry-after");
+      const backoff = retryAfter
+        ? parseInt(retryAfter, 10) * 1000
+        : INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+
+      this.logger.warn(
+        `twenty: POST ${path} → ${resp.status}, retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`,
+      );
+      await sleep(backoff);
+      attempt++;
+    }
+
+    throw new TwentyApiError(lastStatus, lastErrorBody, path);
+  }
 }
