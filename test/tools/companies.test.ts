@@ -70,6 +70,6 @@ describe("twenty_companies_get", () => {
 
     assert.equal(calls.length, 1);
     const url = new URL(calls[0]!.url);
-    assert.equal(url.pathname, "/companies/abc-123");
+    assert.equal(url.pathname, "/rest/companies/abc-123");
   });
 });

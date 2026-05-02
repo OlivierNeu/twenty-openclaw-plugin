@@ -1,6 +1,6 @@
 {
   "name": "@lacneu/twenty-openclaw",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Twenty CRM REST API plugin for OpenClaw — manage people, companies, opportunities, notes, tasks across one or more Twenty workspaces with workspace_id whitelist and approval gating on destructive ops",
   "license": "MIT",

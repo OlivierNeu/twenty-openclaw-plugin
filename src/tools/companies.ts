@@ -22,7 +22,7 @@ export function buildCompaniesTools(client: TwentyClient) {
         "Filter examples: `name[ilike]:%acme%`, " +
         "`domainName.primaryLinkUrl[ilike]:%acme.com%`, " +
         "`employees[gte]:50`.",
-      path: "/companies",
+      path: "/rest/companies",
       entityKey: "companies",
     }),
 
@@ -31,7 +31,7 @@ export function buildCompaniesTools(client: TwentyClient) {
       description:
         "Fetch a single company by UUID. Includes direct relations " +
         "(domain, address, ...) when `depth=1` (default).",
-      path: "/companies",
+      path: "/rest/companies",
       entityKeySingular: "company",
     }),
   ];

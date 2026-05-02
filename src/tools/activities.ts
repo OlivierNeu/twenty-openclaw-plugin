@@ -116,10 +116,10 @@ export function buildActivitiesTools(client: TwentyClient) {
           const [noteResp, taskResp] = await Promise.all([
             c.request<
               RawTargetsResponse<"noteTargets", RawNoteTarget>
-            >("GET", "/noteTargets", { query: sharedQuery, signal }),
+            >("GET", "/rest/noteTargets", { query: sharedQuery, signal }),
             c.request<
               RawTargetsResponse<"taskTargets", RawTaskTarget>
-            >("GET", "/taskTargets", { query: sharedQuery, signal }),
+            >("GET", "/rest/taskTargets", { query: sharedQuery, signal }),
           ]);
 
           const noteTargets = noteResp?.data?.noteTargets ?? [];

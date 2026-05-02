@@ -22,7 +22,7 @@ export function buildPeopleTools(client: TwentyClient) {
         "Filter examples: `firstName[eq]:John`, " +
         "`emails.primaryEmail[ilike]:%@acme.com%`, " +
         "`createdAt[gte]:2026-01-01`.",
-      path: "/people",
+      path: "/rest/people",
       entityKey: "people",
     }),
 
@@ -31,7 +31,7 @@ export function buildPeopleTools(client: TwentyClient) {
       description:
         "Fetch a single person by UUID. Includes direct relations " +
         "(emails, phones, company link, ...) when `depth=1` (default).",
-      path: "/people",
+      path: "/rest/people",
       entityKeySingular: "person",
     }),
   ];

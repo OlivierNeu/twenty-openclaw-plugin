@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-02
+
+### Fixed
+
+- **Critical**: P2 list/get tools were hitting Twenty's UI HTML routes
+  (e.g. `/companies`, `/people`) instead of the REST API
+  (`/rest/companies`, `/rest/people`). The HTML response was caught by
+  the JSON-parse fallback and surfaced as an empty result, hiding the
+  bug as "no records found" even when the workspace had data. Fixed by
+  prefixing every list/get/activities path with `/rest/`. Verified live
+  against `crm.lacneu.com` (1 company `Imóveis` now correctly surfaced
+  with full `pageInfo` cursors). Affected tools: `twenty_people_list`,
+  `twenty_people_get`, `twenty_companies_list`, `twenty_companies_get`,
+  `twenty_opportunities_list`, `twenty_opportunities_get`,
+  `twenty_notes_list`, `twenty_tasks_list`, `twenty_activities_list_for`.
+
+### Tests
+
+- Updated `people.test.ts` and `companies.test.ts` strict path assertions
+  to match the corrected `/rest/*` URL.
+- `activities.test.ts` already used `url.includes('/noteTargets')` which
+  remains valid for the new `/rest/noteTargets` URL.
+- Smoke-test (`twenty_workspace_info`) unaffected — it already pointed
+  to the correct `/rest/metadata/objects` endpoint.
+
+## [0.1.0] - 2026-05-02
+
 ### Added
 
 - Initial bootstrap (P0 + P1):

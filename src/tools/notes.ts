@@ -20,7 +20,7 @@ export function buildNotesTools(client: TwentyClient) {
         "`starting_after` to fetch the next page. " +
         "To list notes attached to a specific person/company/opportunity, " +
         "use `twenty_activities_list_for` instead — it joins via noteTargets.",
-      path: "/notes",
+      path: "/rest/notes",
       entityKey: "notes",
     }),
   ];

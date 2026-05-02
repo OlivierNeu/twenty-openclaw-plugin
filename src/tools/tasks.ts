@@ -21,7 +21,7 @@ export function buildTasksTools(client: TwentyClient) {
         "Filter examples: `status[eq]:TODO`, `dueAt[lte]:2026-12-31`. " +
         "To list tasks attached to a specific person/company/opportunity, " +
         "use `twenty_activities_list_for` instead — it joins via taskTargets.",
-      path: "/tasks",
+      path: "/rest/tasks",
       entityKey: "tasks",
     }),
   ];

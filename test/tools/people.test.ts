@@ -107,7 +107,7 @@ describe("twenty_people_list", () => {
     // Verify snake-case → camelCase translation on the wire.
     assert.equal(calls.length, 1);
     const url = new URL(calls[0]!.url);
-    assert.equal(url.pathname, "/people");
+    assert.equal(url.pathname, "/rest/people");
     assert.equal(url.searchParams.get("startingAfter"), "cursor-prev");
     assert.equal(url.searchParams.get("orderBy"), "createdAt[DESC]");
     assert.equal(url.searchParams.get("filter"), "firstName[eq]:Ada");

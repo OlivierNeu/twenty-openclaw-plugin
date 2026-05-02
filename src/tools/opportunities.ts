@@ -21,7 +21,7 @@ export function buildOpportunitiesTools(client: TwentyClient) {
         "`pageInfo.endCursor` + `starting_after` to fetch the next page. " +
         "Filter examples: `stage[eq]:NEW`, `amount.amountMicros[gte]:1000000000`, " +
         "`closeDate[lte]:2026-12-31`.",
-      path: "/opportunities",
+      path: "/rest/opportunities",
       entityKey: "opportunities",
     }),
 
@@ -31,7 +31,7 @@ export function buildOpportunitiesTools(client: TwentyClient) {
         "Fetch a single opportunity by UUID. Includes direct relations " +
         "(amount, stage, point of contact, company, ...) when `depth=1` " +
         "(default).",
-      path: "/opportunities",
+      path: "/rest/opportunities",
       entityKeySingular: "opportunity",
     }),
   ];
