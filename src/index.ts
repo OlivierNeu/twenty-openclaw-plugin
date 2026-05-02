@@ -29,9 +29,11 @@ import { buildBulkTools } from "./tools/bulk.js";
 import { buildCompaniesTools } from "./tools/companies.js";
 import { buildDedupTools } from "./tools/dedup.js";
 import { buildExportTools } from "./tools/export.js";
+import { buildMetadataTools } from "./tools/metadata.js";
 import { buildNotesTools } from "./tools/notes.js";
 import { buildOpportunitiesTools } from "./tools/opportunities.js";
 import { buildPeopleTools } from "./tools/people.js";
+import { buildRecordTools } from "./tools/records.js";
 import { buildSummarizeTools } from "./tools/summarize.js";
 import { buildTasksTools } from "./tools/tasks.js";
 import { buildWorkspaceTools } from "./tools/workspace.js";
@@ -104,6 +106,19 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
   // P4b: dedup helpers (find_similar, people_dedup, companies_dedup),
   //      bulk CSV import (`twenty_bulk_import_csv`), and relationship
   //      summary (`twenty_summarize_relationship`).
+  // P5: metadata API (custom objects + custom fields) — 10 tools, 6
+  //      mutations approval-gated by default. Enables agents to model
+  //      domain concepts dynamically (Mission, Diagnostic, Programme,
+  //      Bilan, ...). Schema regeneration is synchronous on Twenty's
+  //      side, so created objects are reachable via /rest/<plural>
+  //      immediately.
+  // P6: generic record tools — 5 tools (`list`, `get`, `create`, `update`,
+  //      `delete`) parameterised by entity plural name. Closes the loop
+  //      with P5: agents can now manipulate records of the custom objects
+  //      they create. Only `twenty_record_delete` is approval-gated by
+  //      default (delete-on-anything is the only path-traversal-resistant
+  //      destructive operation; create/update remain ungated to match the
+  //      per-entity precedent).
   const allTools = [
     ...buildWorkspaceTools(client),
     ...buildPeopleTools(client),
@@ -118,6 +133,8 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
       allowedImportPaths: config.allowedImportPaths,
     }),
     ...buildSummarizeTools(client),
+    ...buildMetadataTools(client),
+    ...buildRecordTools(client),
   ];
 
   for (const tool of allTools) {

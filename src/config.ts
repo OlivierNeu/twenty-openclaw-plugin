@@ -33,8 +33,15 @@ const DEFAULT_APPROVAL_REQUIRED = [
   "twenty_dedup_auto_merge",
   "twenty_bulk_import_csv",
   "twenty_bulk_delete",
-  "twenty_custom_object_delete",
-  "twenty_field_delete",
+  // P5 — metadata mutations (custom objects + fields). All hard-delete
+  // semantically; create/update gated to keep the workspace schema under
+  // operator control.
+  "twenty_metadata_object_create",
+  "twenty_metadata_object_update",
+  "twenty_metadata_object_delete",
+  "twenty_metadata_field_create",
+  "twenty_metadata_field_update",
+  "twenty_metadata_field_delete",
 ];
 
 /**

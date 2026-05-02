@@ -19,8 +19,11 @@ describe("resolveConfig", () => {
     assert.equal(cfg.defaultWorkspaceId, "");
     assert.equal(cfg.readOnly, false);
     assert.equal(cfg.logLevel, "info");
-    // Default approval list covers the 10 destructive tools.
-    assert.equal(cfg.approvalRequired.size, 10);
+    // Default approval list covers every destructive tool: 8 P2-P4 ops
+    // (people/companies/opportunities/notes/tasks delete + dedup_auto_merge +
+    // bulk_import_csv + bulk_delete) plus 6 P5 metadata mutations
+    // (object/field × create/update/delete) = 14.
+    assert.equal(cfg.approvalRequired.size, 14);
   });
 
   it("strips a trailing slash from serverUrl", () => {

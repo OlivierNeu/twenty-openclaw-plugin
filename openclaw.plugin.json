@@ -43,8 +43,13 @@
           "twenty_dedup_auto_merge",
           "twenty_bulk_import_csv",
           "twenty_bulk_delete",
-          "twenty_custom_object_delete",
-          "twenty_field_delete"
+          "twenty_metadata_object_create",
+          "twenty_metadata_object_update",
+          "twenty_metadata_object_delete",
+          "twenty_metadata_field_create",
+          "twenty_metadata_field_update",
+          "twenty_metadata_field_delete",
+          "twenty_record_delete"
         ],
         "description": "Tool names that trigger an approval prompt via the `before_tool_call` hook before being executed. Defaults to every destructive operation."
       },
