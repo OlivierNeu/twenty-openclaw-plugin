@@ -1,13 +1,16 @@
 // Twenty Companies (`/rest/companies`) read + write tools.
 //
 // Verified against the Twenty REST OpenAPI:
-//   - GET    /companies         → { data: { companies: [...] }, pageInfo, totalCount }
-//   - GET    /companies/{id}    → { data: { company: {...} } }
-//   - POST   /companies         → 201 { data: { createCompany: {...} } }
-//   - PATCH  /companies/{id}    → 200 { data: { updateCompany: {...} } }
-//   - DELETE /companies/{id}    → 200 { data: { deleteCompany: { id } } }
+//   - GET    /companies                  → { data: { companies: [...] }, pageInfo, totalCount }
+//   - GET    /companies/{id}             → { data: { company: {...} } }
+//   - POST   /companies                  → 201 { data: { createCompany: {...} } }
+//   - PATCH  /companies/{id}             → 200 { data: { updateCompany: {...} } }
+//   - DELETE /companies/{id}             → 200 { data: { deleteCompany: { id } } }
 //
-// All endpoints share the standard list/get/create/update/delete factories.
+// Restore (`PATCH /restore/companies/{id}`) was prototyped in P4a but
+// dropped: Twenty 2.1 declares the route in the REST OpenAPI yet returns
+// 400 BadRequest at runtime. Reconstruct from git history at v0.2.0 once
+// the upstream bug is fixed.
 
 import { Type } from "@sinclair/typebox";
 
@@ -115,8 +118,8 @@ export function buildCompaniesTools(client: TwentyClient) {
       description:
         "Soft-delete a company by UUID. The record is kept in the database " +
         "with a `deletedAt` timestamp and is no longer returned by " +
-        "`twenty_companies_list` / `twenty_companies_get`. Recoverable via " +
-        "the Twenty UI or a future `twenty_companies_restore` tool. " +
+        "`twenty_companies_list` / `twenty_companies_get`. Recoverable " +
+        "through the Twenty UI (REST restore endpoint is broken upstream). " +
         "This tool requires approval by default (see `approvalRequired`).",
       path: "/rest/companies",
       entityKeySingular: "company",

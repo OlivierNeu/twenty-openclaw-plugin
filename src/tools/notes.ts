@@ -1,10 +1,12 @@
 // Twenty Notes (`/rest/notes`) read + write tools.
 //
 // Verified against the Twenty REST OpenAPI:
-//   - GET    /notes         → { data: { notes: [...] }, pageInfo, totalCount }
-//   - POST   /notes         → 201 { data: { createNote: {...} } }
-//   - PATCH  /notes/{id}    → 200 { data: { updateNote: {...} } }
-//   - DELETE /notes/{id}    → 200 { data: { deleteNote: { id } } }
+//   - GET    /notes                 → { data: { notes: [...] }, pageInfo, totalCount }
+//   - POST   /notes                 → 201 { data: { createNote: {...} } }
+//   - PATCH  /notes/{id}            → 200 { data: { updateNote: {...} } }
+//   - DELETE /notes/{id}            → 200 { data: { deleteNote: { id } } }
+//
+// Restore was prototyped in P4a but dropped — see comments in people.ts.
 //
 // `twenty_activities_list_for` is the preferred way to list notes attached
 // to a specific person/company/opportunity (it joins via noteTargets).
@@ -90,8 +92,8 @@ export function buildNotesTools(client: TwentyClient) {
       description:
         "Soft-delete a note by UUID. The record is kept in the database " +
         "with a `deletedAt` timestamp and is no longer returned by " +
-        "`twenty_notes_list`. Recoverable via the Twenty UI or a future " +
-        "`twenty_notes_restore` tool. " +
+        "`twenty_notes_list`. Recoverable through the Twenty UI (REST " +
+        "restore endpoint is broken upstream). " +
         "This tool requires approval by default (see `approvalRequired`).",
       path: "/rest/notes",
       entityKeySingular: "note",

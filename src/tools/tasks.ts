@@ -1,10 +1,12 @@
 // Twenty Tasks (`/rest/tasks`) read + write tools.
 //
 // Verified against the Twenty REST OpenAPI:
-//   - GET    /tasks         → { data: { tasks: [...] }, pageInfo, totalCount }
-//   - POST   /tasks         → 201 { data: { createTask: {...} } }
-//   - PATCH  /tasks/{id}    → 200 { data: { updateTask: {...} } }
-//   - DELETE /tasks/{id}    → 200 { data: { deleteTask: { id } } }
+//   - GET    /tasks                 → { data: { tasks: [...] }, pageInfo, totalCount }
+//   - POST   /tasks                 → 201 { data: { createTask: {...} } }
+//   - PATCH  /tasks/{id}            → 200 { data: { updateTask: {...} } }
+//   - DELETE /tasks/{id}            → 200 { data: { deleteTask: { id } } }
+//
+// Restore was prototyped in P4a but dropped — see comments in people.ts.
 //
 // `twenty_activities_list_for` is the preferred way to list tasks attached
 // to a specific person/company/opportunity (it joins via taskTargets).
@@ -106,8 +108,8 @@ export function buildTasksTools(client: TwentyClient) {
       description:
         "Soft-delete a task by UUID. The record is kept in the database " +
         "with a `deletedAt` timestamp and is no longer returned by " +
-        "`twenty_tasks_list`. Recoverable via the Twenty UI or a future " +
-        "`twenty_tasks_restore` tool. " +
+        "`twenty_tasks_list`. Recoverable through the Twenty UI (REST " +
+        "restore endpoint is broken upstream). " +
         "This tool requires approval by default (see `approvalRequired`).",
       path: "/rest/tasks",
       entityKeySingular: "task",

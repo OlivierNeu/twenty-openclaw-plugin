@@ -58,6 +58,12 @@
         "enum": ["debug", "info", "warn", "error"],
         "default": "info",
         "description": "Plugin log verbosity. `debug` includes request bodies (be mindful of PII)."
+      },
+      "allowedImportPaths": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": ["/home/node/.openclaw/", "/tmp/"],
+        "description": "Whitelist of directories `twenty_bulk_import_csv` is allowed to read from. The supplied path is canonicalised (path.resolve) before the prefix check, so `../` traversal is blocked. An EXPLICIT empty array disables CSV import entirely."
       }
     },
     "required": []
@@ -101,6 +107,11 @@
       "label": "Log level",
       "advanced": true,
       "help": "info (default), debug includes request bodies"
+    },
+    "allowedImportPaths": {
+      "label": "Allowed CSV import paths",
+      "advanced": true,
+      "help": "Directories twenty_bulk_import_csv is allowed to read from. Paths are canonicalised before the check (defeats `../` traversal). Default: /home/node/.openclaw/ and /tmp/."
     }
   }
 }

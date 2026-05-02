@@ -20,6 +20,7 @@ export interface TwentyPluginConfig {
   approvalRequired?: string[];
   readOnly?: boolean;
   logLevel?: TwentyLogLevel;
+  allowedImportPaths?: string[];
 }
 
 /**
@@ -37,6 +38,7 @@ export interface ResolvedTwentyConfig {
   approvalRequired: Set<string>;
   readOnly: boolean;
   logLevel: TwentyLogLevel;
+  allowedImportPaths: string[];
 }
 
 /**

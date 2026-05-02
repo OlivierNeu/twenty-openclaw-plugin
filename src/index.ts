@@ -25,10 +25,14 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import { resolveConfig } from "./config.js";
 import { createApprovalHook } from "./hooks/approval.js";
 import { buildActivitiesTools } from "./tools/activities.js";
+import { buildBulkTools } from "./tools/bulk.js";
 import { buildCompaniesTools } from "./tools/companies.js";
+import { buildDedupTools } from "./tools/dedup.js";
+import { buildExportTools } from "./tools/export.js";
 import { buildNotesTools } from "./tools/notes.js";
 import { buildOpportunitiesTools } from "./tools/opportunities.js";
 import { buildPeopleTools } from "./tools/people.js";
+import { buildSummarizeTools } from "./tools/summarize.js";
 import { buildTasksTools } from "./tools/tasks.js";
 import { buildWorkspaceTools } from "./tools/workspace.js";
 import { TwentyClient } from "./twenty-client.js";
@@ -92,8 +96,14 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
   // P0+P1: workspace introspection (`twenty_workspace_info`).
   // P2: read tools for People, Companies, Opportunities, Notes, Tasks +
   //     a cross-record activities timeline (`twenty_activities_list_for`).
-  // Future phases will add create/update/delete (P3) and dedup/bulk
-  // helpers (P4); each new domain file just appends to this list.
+  // P3: create / update / delete (soft) for the five domain entities.
+  // P4a: `twenty_export` bulk JSON/CSV exporter. (Restore tools were
+  //      built in P4a but dropped — Twenty 2.1 declares the endpoints in
+  //      the OpenAPI but returns 400 BadRequest at runtime. We will revive
+  //      them once upstream fixes the gap.)
+  // P4b: dedup helpers (find_similar, people_dedup, companies_dedup),
+  //      bulk CSV import (`twenty_bulk_import_csv`), and relationship
+  //      summary (`twenty_summarize_relationship`).
   const allTools = [
     ...buildWorkspaceTools(client),
     ...buildPeopleTools(client),
@@ -102,6 +112,12 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
     ...buildNotesTools(client),
     ...buildTasksTools(client),
     ...buildActivitiesTools(client),
+    ...buildExportTools(client),
+    ...buildDedupTools(client),
+    ...buildBulkTools(client, {
+      allowedImportPaths: config.allowedImportPaths,
+    }),
+    ...buildSummarizeTools(client),
   ];
 
   for (const tool of allTools) {

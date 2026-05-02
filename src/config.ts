@@ -37,6 +37,14 @@ const DEFAULT_APPROVAL_REQUIRED = [
   "twenty_field_delete",
 ];
 
+/**
+ * Default directories the bulk-import CSV tool is allowed to read from.
+ * Restricted to the OpenClaw workspace mount and `/tmp/` (transient
+ * scratch). Operators can override the list via
+ * `plugins.entries.twenty-openclaw.config.allowedImportPaths`.
+ */
+const DEFAULT_ALLOWED_IMPORT_PATHS = ["/home/node/.openclaw/", "/tmp/"];
+
 const VALID_LOG_LEVELS: TwentyLogLevel[] = ["debug", "info", "warn", "error"];
 
 /**
@@ -98,6 +106,20 @@ export function resolveConfig(
     ? (cfg.logLevel as TwentyLogLevel)
     : "info";
 
+  // `allowedImportPaths`: when the operator sets an explicit array, we
+  // honour it verbatim (after env substitution and trimming). When the
+  // field is missing we fall back to the safe default. An EXPLICIT empty
+  // array means "no path is allowed" — the bulk-import tool will refuse
+  // every call. We do not merge defaults into operator-provided lists to
+  // keep the security surface predictable.
+  const allowedImportPaths = (
+    Array.isArray(cfg.allowedImportPaths)
+      ? cfg.allowedImportPaths
+      : DEFAULT_ALLOWED_IMPORT_PATHS
+  )
+    .map((p) => resolveEnv(p))
+    .filter((p) => typeof p === "string" && p.trim() !== "");
+
   return {
     enabled: cfg.enabled !== false,
     apiKey,
@@ -107,5 +129,6 @@ export function resolveConfig(
     approvalRequired: new Set(approvalRequired),
     readOnly: cfg.readOnly === true,
     logLevel,
+    allowedImportPaths,
   };
 }

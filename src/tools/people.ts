@@ -1,14 +1,20 @@
 // Twenty People (`/rest/people`) read + write tools.
 //
 // Verified against the Twenty REST OpenAPI:
-//   - GET    /people           → { data: { people: [...] }, pageInfo, totalCount }
-//   - GET    /people/{id}      → { data: { person: {...} } }
-//   - POST   /people           → 201 { data: { createPerson: {...} } }
-//   - PATCH  /people/{id}      → 200 { data: { updatePerson: {...} } }
-//   - DELETE /people/{id}      → 200 { data: { deletePerson: { id } } }
+//   - GET    /people                  → { data: { people: [...] }, pageInfo, totalCount }
+//   - GET    /people/{id}             → { data: { person: {...} } }
+//   - POST   /people                  → 201 { data: { createPerson: {...} } }
+//   - PATCH  /people/{id}             → 200 { data: { updatePerson: {...} } }
+//   - DELETE /people/{id}             → 200 { data: { deletePerson: { id } } }
 //
 // All endpoints share the standard list/get/create/update/delete factories
 // — see `_factory.ts` for the unwrap, write, and read-only contracts.
+//
+// Restore (`PATCH /restore/people/{id}`) was prototyped in P4a but dropped:
+// Twenty 2.1 declares the route in the REST OpenAPI yet returns 400
+// BadRequest at runtime, with no GraphQL fallback. We will reintroduce
+// the tool once upstream fixes the path; reconstruct from the git history
+// at tag v0.2.0 (commit e952a2c).
 //
 // Body schema covers the fields most commonly edited by humans (name,
 // emails, jobTitle, city, companyId). Twenty supports many more fields
@@ -121,8 +127,8 @@ export function buildPeopleTools(client: TwentyClient) {
       description:
         "Soft-delete a person by UUID. The record is kept in the database " +
         "with a `deletedAt` timestamp and is no longer returned by " +
-        "`twenty_people_list` / `twenty_people_get`. Recoverable via the " +
-        "Twenty UI or a future `twenty_people_restore` tool. " +
+        "`twenty_people_list` / `twenty_people_get`. Recoverable through " +
+        "the Twenty UI (the REST restore endpoint is broken upstream). " +
         "This tool requires approval by default (see `approvalRequired`).",
       path: "/rest/people",
       entityKeySingular: "person",

@@ -1,13 +1,13 @@
 // Twenty Opportunities (`/rest/opportunities`) read + write tools.
 //
 // Verified against the Twenty REST OpenAPI:
-//   - GET    /opportunities         → { data: { opportunities: [...] }, pageInfo, totalCount }
-//   - GET    /opportunities/{id}    → { data: { opportunity: {...} } }
-//   - POST   /opportunities         → 201 { data: { createOpportunity: {...} } }
-//   - PATCH  /opportunities/{id}    → 200 { data: { updateOpportunity: {...} } }
-//   - DELETE /opportunities/{id}    → 200 { data: { deleteOpportunity: { id } } }
+//   - GET    /opportunities                  → { data: { opportunities: [...] }, pageInfo, totalCount }
+//   - GET    /opportunities/{id}             → { data: { opportunity: {...} } }
+//   - POST   /opportunities                  → 201 { data: { createOpportunity: {...} } }
+//   - PATCH  /opportunities/{id}             → 200 { data: { updateOpportunity: {...} } }
+//   - DELETE /opportunities/{id}             → 200 { data: { deleteOpportunity: { id } } }
 //
-// All endpoints share the standard list/get/create/update/delete factories.
+// Restore was prototyped in P4a but dropped — see comments in people.ts.
 
 import { Type } from "@sinclair/typebox";
 
@@ -124,8 +124,8 @@ export function buildOpportunitiesTools(client: TwentyClient) {
         "Soft-delete an opportunity by UUID. The record is kept in the " +
         "database with a `deletedAt` timestamp and is no longer returned " +
         "by `twenty_opportunities_list` / `twenty_opportunities_get`. " +
-        "Recoverable via the Twenty UI or a future " +
-        "`twenty_opportunities_restore` tool. " +
+        "Recoverable through the Twenty UI (REST restore endpoint is " +
+        "broken upstream). " +
         "This tool requires approval by default (see `approvalRequired`).",
       path: "/rest/opportunities",
       entityKeySingular: "opportunity",

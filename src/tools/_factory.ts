@@ -487,6 +487,12 @@ export function buildUpdateTool<
   );
 }
 
+// `buildRestoreTool` was removed in P4b: Twenty 2.1 declares
+// `PATCH /restore/<entity>/{id}` in the REST OpenAPI yet returns
+// 400 BadRequest at runtime, with no GraphQL fallback. To reintroduce
+// the helper once upstream fixes the bug, recover the deleted code from
+// git history at tag `v0.2.0` (commit e952a2c) — about 45 lines.
+
 /**
  * Build a delete tool wrapping a Twenty `DELETE /<entityKey>/{id}` endpoint.
  *
