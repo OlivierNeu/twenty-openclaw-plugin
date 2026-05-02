@@ -1,18 +1,18 @@
 // Live smoke test for the Twenty REST endpoint behind `twenty_workspace_info`.
 //
-// Reads credentials from `.env.smoketest` at the repo root (gitignored
-// when populated with real secrets — only the placeholder template is
-// tracked) and exits 0 on success, 1 on tool failure, 2 on missing env.
+// Reads credentials from `.env` (preferred, gitignored) or
+// `.env.smoketest` (template fallback) at the repo root. Exits 0 on
+// success, 1 on tool failure, 2 on missing env.
 //
 // Usage:
-//   1. Drop credentials in .env.smoketest:
+//   1. Drop real credentials in `.env` (gitignored):
 //        TWENTY_API_KEY=...
 //        TWENTY_SERVER_URL=https://crm.example.com
 //        TWENTY_WORKSPACE_ID=<uuid>
 //   2. npm run build
 //   3. npm run smoke-test
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -44,7 +44,10 @@ function parseDotEnv(path) {
   return out;
 }
 
-const envPath = resolve(ROOT, ".env.smoketest");
+// `.env` (real, gitignored) wins over `.env.smoketest` (template, tracked).
+const dotenvPath = resolve(ROOT, ".env");
+const templatePath = resolve(ROOT, ".env.smoketest");
+const envPath = existsSync(dotenvPath) ? dotenvPath : templatePath;
 const env = parseDotEnv(envPath);
 
 const required = ["TWENTY_API_KEY", "TWENTY_SERVER_URL", "TWENTY_WORKSPACE_ID"];

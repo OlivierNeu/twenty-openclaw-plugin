@@ -23,6 +23,12 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 import { resolveConfig } from "./config.js";
+import { buildActivitiesTools } from "./tools/activities.js";
+import { buildCompaniesTools } from "./tools/companies.js";
+import { buildNotesTools } from "./tools/notes.js";
+import { buildOpportunitiesTools } from "./tools/opportunities.js";
+import { buildPeopleTools } from "./tools/people.js";
+import { buildTasksTools } from "./tools/tasks.js";
 import { buildWorkspaceTools } from "./tools/workspace.js";
 import { TwentyClient } from "./twenty-client.js";
 import type { TwentyPluginConfig } from "./types.js";
@@ -81,10 +87,19 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
   const client = new TwentyClient(config, api.logger);
 
   // Order doesn't matter for tools — we group by domain for log clarity.
-  // P0+P1: only the workspace tools are registered. Future phases append
-  // people, companies, opportunities, notes, tasks, etc.
+  // P0+P1: workspace introspection (`twenty_workspace_info`).
+  // P2: read tools for People, Companies, Opportunities, Notes, Tasks +
+  //     a cross-record activities timeline (`twenty_activities_list_for`).
+  // Future phases will add create/update/delete (P3) and dedup/bulk
+  // helpers (P4); each new domain file just appends to this list.
   const allTools = [
     ...buildWorkspaceTools(client),
+    ...buildPeopleTools(client),
+    ...buildCompaniesTools(client),
+    ...buildOpportunitiesTools(client),
+    ...buildNotesTools(client),
+    ...buildTasksTools(client),
+    ...buildActivitiesTools(client),
   ];
 
   for (const tool of allTools) {
