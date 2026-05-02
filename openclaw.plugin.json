@@ -1,0 +1,106 @@
+{
+  "id": "twenty-openclaw",
+  "name": "Twenty",
+  "description": "Twenty CRM REST API plugin for OpenClaw — manage people, companies, opportunities, notes, tasks across one or more Twenty workspaces with workspace_id whitelist and approval gating on destructive ops",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Master switch — disables all Twenty tools when false"
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Twenty API key sent as `Authorization: Bearer <key>`. Supports ${ENV_VAR} substitution."
+      },
+      "serverUrl": {
+        "type": "string",
+        "default": "https://crm.lacneu.com",
+        "description": "Twenty server base URL (no trailing slash). Supports ${ENV_VAR} substitution."
+      },
+      "allowedWorkspaceIds": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "Whitelist of Twenty workspace UUIDs the plugin is allowed to operate on. Any tool call referencing a workspace outside this list is rejected before any HTTP request is made."
+      },
+      "defaultWorkspaceId": {
+        "type": "string",
+        "description": "Default Twenty workspace UUID injected when a tool does not explicitly provide one. Must be present in `allowedWorkspaceIds`. Supports ${ENV_VAR} substitution."
+      },
+      "approvalRequired": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [
+          "twenty_people_delete",
+          "twenty_companies_delete",
+          "twenty_opportunities_delete",
+          "twenty_notes_delete",
+          "twenty_tasks_delete",
+          "twenty_dedup_auto_merge",
+          "twenty_bulk_import_csv",
+          "twenty_bulk_delete",
+          "twenty_custom_object_delete",
+          "twenty_field_delete"
+        ],
+        "description": "Tool names that trigger an approval prompt via the `before_tool_call` hook before being executed. Defaults to every destructive operation."
+      },
+      "readOnly": {
+        "type": "boolean",
+        "default": false,
+        "description": "When true, blocks every write/delete operation at the plugin level regardless of approval state."
+      },
+      "logLevel": {
+        "type": "string",
+        "enum": ["debug", "info", "warn", "error"],
+        "default": "info",
+        "description": "Plugin log verbosity. `debug` includes request bodies (be mindful of PII)."
+      }
+    },
+    "required": []
+  },
+  "uiHints": {
+    "enabled": {
+      "label": "Enable Twenty tools",
+      "help": "Master switch — turn off to fully disable all twenty_* tools without uninstalling"
+    },
+    "apiKey": {
+      "label": "Twenty API Key",
+      "placeholder": "${TWENTY_API_KEY}",
+      "sensitive": true,
+      "help": "Twenty REST API key. Sent as `Authorization: Bearer <key>`."
+    },
+    "serverUrl": {
+      "label": "Twenty Server URL",
+      "placeholder": "https://crm.example.com",
+      "help": "Base URL of the Twenty server (no trailing slash)."
+    },
+    "allowedWorkspaceIds": {
+      "label": "Allowed Workspace IDs",
+      "help": "Whitelist of Twenty workspace UUIDs. The plugin refuses to call any workspace outside this list."
+    },
+    "defaultWorkspaceId": {
+      "label": "Default Workspace ID",
+      "placeholder": "${TWENTY_WORKSPACE_ID}",
+      "help": "Workspace UUID used when a tool does not specify one. Must appear in allowedWorkspaceIds."
+    },
+    "approvalRequired": {
+      "label": "Tools requiring approval",
+      "advanced": true,
+      "help": "Tool names that trigger a `before_tool_call` approval prompt. Defaults cover every destructive operation."
+    },
+    "readOnly": {
+      "label": "Read-only mode",
+      "advanced": true,
+      "help": "Block every write/delete at the plugin level. Useful for safe experimentation."
+    },
+    "logLevel": {
+      "label": "Log level",
+      "advanced": true,
+      "help": "info (default), debug includes request bodies"
+    }
+  }
+}

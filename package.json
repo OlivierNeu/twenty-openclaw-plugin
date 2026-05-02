@@ -1,0 +1,74 @@
+{
+  "name": "@lacneu/twenty-openclaw",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Twenty CRM REST API plugin for OpenClaw — manage people, companies, opportunities, notes, tasks across one or more Twenty workspaces with workspace_id whitelist and approval gating on destructive ops",
+  "license": "MIT",
+  "author": "Olivier Neu",
+  "homepage": "https://github.com/OlivierNeu/twenty-openclaw-plugin#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OlivierNeu/twenty-openclaw-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OlivierNeu/twenty-openclaw-plugin/issues"
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "twenty",
+    "twenty-crm",
+    "crm",
+    "people",
+    "companies",
+    "opportunities"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "examples",
+    "openclaw.plugin.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:test": "tsc -p tsconfig.test-build.json",
+    "clean": "rm -rf dist dist-test",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "npm run build:test && node --test 'dist-test/test/**/*.test.js'",
+    "smoke-test": "npm run build && node scripts/smoke-test.mjs",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.4.0",
+      "minGatewayVersion": "2026.4.0"
+    }
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-agent-core": "^0.70.2",
+    "@types/node": "^22.0.0",
+    "openclaw": ">=2026.4.0",
+    "typescript": "^5.6.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.4.0"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  }
+}
