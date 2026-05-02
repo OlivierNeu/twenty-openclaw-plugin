@@ -7,9 +7,16 @@ approval gating on destructive operations, an optional global read-only
 switch, and a small set of opinionated business helpers (dedup, enrich,
 bulk import).
 
-> **Status:** P0 + P1 bootstrap. The plugin currently ships **one** read-
-> only tool (`twenty_workspace_info`). The remaining ~29 domain tools
-> arrive in subsequent phases — see the [Roadmap](#roadmap).
+> **Status:** P0 + P1 + P2 + P3. The plugin currently ships:
+>
+> - 1 introspection tool (`twenty_workspace_info`)
+> - 9 read tools (list/get on People, Companies, Opportunities, Notes, Tasks)
+> - 1 cross-record activities tool (`twenty_activities_list_for`)
+> - **15 write tools** — `create`/`update`/`delete` on the same five entities
+> - **`before_tool_call` approval hook** gating every destructive operation
+>
+> P4 business helpers (dedup, enrich, bulk import) are not yet shipped —
+> see the [Roadmap](#roadmap).
 
 ---
 
@@ -92,32 +99,41 @@ substitution.
 | `serverUrl` | string | `https://crm.lacneu.com` | Base URL of the Twenty server (no trailing slash). |
 | `allowedWorkspaceIds` | string[] | `[]` | Whitelist of workspace UUIDs. Empty list ⇒ every workspace call is rejected. |
 | `defaultWorkspaceId` | string | first allowed | Workspace UUID used when a tool doesn't specify one. Must be in `allowedWorkspaceIds`. |
-| `approvalRequired` | string[] | 10 destructive tool names | Triggers an approval prompt via the `before_tool_call` hook. **Not enforced yet** — wired in P3. |
+| `approvalRequired` | string[] | 10 destructive tool names | Triggers an approval prompt via the `before_tool_call` hook. Enforced as of P3 — defaults gate every `*_delete`. |
 | `readOnly` | boolean | `false` | When true, every mutating tool is rejected at the plugin layer before any HTTP call. |
 | `logLevel` | string | `info` | `debug` includes request bodies (be mindful of PII). |
 
 ## Tools
 
-### Currently shipped (P1)
+### Currently shipped
 
 | Tool | Description | Mutates? |
 |---|---|---|
-| `twenty_workspace_info` | List all metadata objects (standard + custom) of the configured workspace. Returns server URL, object counts, and per-object summary (name, label, fields count, isCustom, isActive, isSystem). | No |
+| `twenty_workspace_info` | List all metadata objects (standard + custom) of the configured workspace. | No |
+| `twenty_people_list` / `_get` | List + fetch-by-id People with cursor pagination. | No |
+| `twenty_people_create` | Create a Person (`name`, `emails`, `jobTitle`, `city`, `companyId`). | Yes |
+| `twenty_people_update` | Partial PATCH on a Person by UUID. | Yes |
+| `twenty_people_delete` | Soft-delete a Person (`deletedAt` set, recoverable). Approval-gated. | Yes |
+| `twenty_companies_list` / `_get` | List + fetch-by-id Companies. | No |
+| `twenty_companies_create` / `_update` | Create / partial-update a Company. | Yes |
+| `twenty_companies_delete` | Soft-delete a Company. Approval-gated. | Yes |
+| `twenty_opportunities_list` / `_get` | List + fetch-by-id Opportunities. | No |
+| `twenty_opportunities_create` / `_update` | Create / partial-update an Opportunity. | Yes |
+| `twenty_opportunities_delete` | Soft-delete an Opportunity. Approval-gated. | Yes |
+| `twenty_notes_list` | List Notes. (Use `twenty_activities_list_for` for record-attached notes.) | No |
+| `twenty_notes_create` / `_update` | Create / partial-update a Note. | Yes |
+| `twenty_notes_delete` | Soft-delete a Note. Approval-gated. | Yes |
+| `twenty_tasks_list` | List Tasks. (Use `twenty_activities_list_for` for record-attached tasks.) | No |
+| `twenty_tasks_create` / `_update` | Create / partial-update a Task. | Yes |
+| `twenty_tasks_delete` | Soft-delete a Task. Approval-gated. | Yes |
+| `twenty_activities_list_for` | Cross-record timeline (notes + tasks) attached to a Person/Company/Opportunity. | No |
 
-### Planned (P2 — domain CRUD)
-
-| Tool | Description |
-|---|---|
-| `twenty_people_search` / `_get` / `_create` / `_update` / `_delete` | People CRUD with cursor pagination. |
-| `twenty_companies_search` / `_get` / `_create` / `_update` / `_delete` | Companies CRUD. |
-| `twenty_opportunities_search` / `_get` / `_create` / `_update` / `_delete` | Opportunities CRUD with stage filters. |
-| `twenty_notes_search` / `_get` / `_create` / `_update` / `_delete` | Notes CRUD against any record. |
-| `twenty_tasks_search` / `_get` / `_create` / `_update` / `_delete` | Tasks CRUD with status + due date filters. |
-| `twenty_activities_*` | Calls, meetings, message threads. |
-
-### Planned (P3 — gating)
-
-- `before_tool_call` approval hook driven by `approvalRequired`.
+**Soft-delete contract.** All `*_delete` tools issue
+`DELETE /rest/<entity>/{id}?soft_delete=true`. The Twenty OpenAPI default is
+HARD delete (`soft_delete=false`); this plugin overrides that explicitly so
+records remain in the database with a `deletedAt` timestamp and are
+recoverable through the Twenty UI or a future `twenty_<entity>_restore`
+tool. Hard-delete is intentionally not exposed in this release.
 
 ### Planned (P4 — business helpers)
 
@@ -125,6 +141,42 @@ substitution.
 - `twenty_dedup_*` — find and merge duplicates.
 - `twenty_find_similar` — semantic search across records.
 - `twenty_bulk_import_csv` / `twenty_bulk_delete` — bulk operations.
+- `twenty_<entity>_restore` — undo a soft-delete.
+
+## Approval gating (`before_tool_call`)
+
+Every tool name listed in `approvalRequired` triggers a `before_tool_call`
+hook that returns a `requireApproval` directive to the OpenClaw runtime.
+The runtime then surfaces the prompt to the operator via the active
+channel (Telegram inline button, Control UI, ...) and only proceeds when
+the operator approves. Denied or timed-out calls (10 min default) are
+rejected without ever reaching Twenty.
+
+Approval prompts include:
+
+- `severity: "critical"` — the operator's UI flags it appropriately.
+- `timeoutMs: 600_000` (10 minutes).
+- `timeoutBehavior: "deny"` — silence is refusal.
+- A JSON snapshot of the tool parameters (with `workspaceId` stripped).
+
+The hook is wired automatically when the plugin loads — no extra
+configuration is required on the host side. To audit or tweak the gated
+list, override `approvalRequired` in `plugins.entries.twenty-openclaw.config`:
+
+```bash
+openclaw config set 'plugins.entries.twenty-openclaw.config.approvalRequired' \
+  '["twenty_people_delete","twenty_companies_delete","twenty_opportunities_delete","twenty_notes_delete","twenty_tasks_delete"]' \
+  --strict-json
+```
+
+Pass an empty array to disable approval gating entirely (not recommended).
+
+> **Note on hook policy flags.** OpenClaw 2026.4.x introduced
+> `plugins.entries.<id>.hooks.allowConversationAccess` — but that toggle
+> only governs `llm_input` / `llm_output` / `agent_end` hooks (raw
+> conversation surfaces). `before_tool_call` is not in that family, so no
+> manifest-level or config-level toggle is required for this plugin's
+> approval hook.
 
 ## Examples
 
@@ -177,11 +229,14 @@ npm run build
 
 - **P0** — repo + license + .gitignore. ✅
 - **P1** — bootstrap: manifest, package, single read-only tool, smoke
-  script, CI/Release workflows. ✅ *(this release)*
-- **P2** — domain CRUD tools (people, companies, opportunities, notes,
-  tasks, activities). 🟡 *(next)*
-- **P3** — approval gating via `before_tool_call`. 🟡
-- **P4** — business helpers (enrich, dedup, find_similar, bulk). 🟡
+  script, CI/Release workflows. ✅
+- **P2** — domain read tools (list/get for the five entities + cross-record
+  activities timeline). ✅
+- **P3** — write tools (create/update/delete on the five entities) +
+  `before_tool_call` approval gating on every destructive operation. ✅
+  *(this release)*
+- **P4** — business helpers (enrich, dedup, find_similar, bulk import,
+  restore). 🟡
 
 ## License
 

@@ -365,3 +365,172 @@ export function buildGetByIdTool<TItem = unknown>(
     client,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Write helpers — create / update / delete.
+//
+// Twenty's REST API wraps every write response under a verb-prefixed key:
+//   POST   /<entity>          → 201 { data: { create<Entity>: {...} } }
+//   PATCH  /<entity>/{id}     → 200 { data: { update<Entity>: {...} } }
+//   DELETE /<entity>/{id}     → 200 { data: { delete<Entity>: { id } } }
+//
+// These helpers unwrap the verb key mechanically from the entity name,
+// so the per-domain file only declares the human bits (path, schema,
+// tool description). All write tools set `mutates: true` — the factory
+// raises `TwentyReadOnlyError` BEFORE the network call when the plugin
+// is in read-only mode.
+// ---------------------------------------------------------------------------
+
+/**
+ * Capitalise the first letter of an entity name (`"person"` → `"Person"`)
+ * to build Twenty's response wrapper keys (`createPerson`, `updateNote`,
+ * etc.). Helper kept private to avoid leaking a one-line utility.
+ */
+function capitalize(s: string): string {
+  return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1);
+}
+
+/**
+ * Build a create tool wrapping a Twenty `POST /<entityKey>` endpoint.
+ *
+ * - `path` is the URL path (e.g. `/rest/people`).
+ * - `entityKeySingular` is the lowercase singular form
+ *   (`person`, `company`, `opportunity`, `note`, `task`). The factory
+ *   capitalises it to derive the response key (`createPerson`, ...).
+ * - `bodySchema` is the TypeBox shape the agent must provide. The factory
+ *   forwards it verbatim to Twenty as the JSON body.
+ */
+export function buildCreateTool<TBodySchema extends TSchema, TItem = unknown>(
+  client: TwentyClient,
+  spec: {
+    name: string;
+    description: string;
+    path: string;
+    entityKeySingular: string;
+    bodySchema: TBodySchema;
+  },
+) {
+  const responseKey = `create${capitalize(spec.entityKeySingular)}`;
+  return defineTwentyTool(
+    {
+      name: spec.name,
+      description: spec.description,
+      mutates: true,
+      parameters: spec.bodySchema,
+      run: async (params, c, signal) => {
+        const resp = await c.request<{ data?: Record<string, unknown> }>(
+          "POST",
+          spec.path,
+          { body: params, signal },
+        );
+        const record = resp?.data?.[responseKey];
+        return (record as TItem | undefined) ?? null;
+      },
+    },
+    client,
+  );
+}
+
+/**
+ * Build an update tool wrapping a Twenty `PATCH /<entityKey>/{id}` endpoint.
+ *
+ * The agent-facing schema MUST contain a top-level `id` (UUID, required)
+ * — the factory pulls it out and forwards the rest of the object as the
+ * PATCH body. This keeps the schema declarative for partial updates: the
+ * agent sees `id` next to the editable fields, and the factory handles
+ * the path/body separation.
+ */
+export function buildUpdateTool<
+  TBodySchema extends TSchema,
+  TItem = unknown,
+>(
+  client: TwentyClient,
+  spec: {
+    name: string;
+    description: string;
+    path: string;
+    entityKeySingular: string;
+    bodySchema: TBodySchema;
+  },
+) {
+  const responseKey = `update${capitalize(spec.entityKeySingular)}`;
+  return defineTwentyTool(
+    {
+      name: spec.name,
+      description: spec.description,
+      mutates: true,
+      parameters: spec.bodySchema,
+      run: async (params, c, signal) => {
+        // Pull `id` out of the body — the path id is the source of truth
+        // for Twenty's PATCH route; stripping it from the body avoids
+        // ambiguity (and matches Twenty's GraphQL convention where ids
+        // are path/argument-only, never inside the patch input).
+        const { id, ...body } = params as { id: string } & Record<
+          string,
+          unknown
+        >;
+        if (typeof id !== "string" || id.length === 0) {
+          throw new Error(
+            `${spec.name}: \`id\` is required and must be a non-empty UUID`,
+          );
+        }
+        const resp = await c.request<{ data?: Record<string, unknown> }>(
+          "PATCH",
+          `${spec.path}/${encodeURIComponent(id)}`,
+          { body, signal },
+        );
+        const record = resp?.data?.[responseKey];
+        return (record as TItem | undefined) ?? null;
+      },
+    },
+    client,
+  );
+}
+
+/**
+ * Build a delete tool wrapping a Twenty `DELETE /<entityKey>/{id}` endpoint.
+ *
+ * Soft-delete contract:
+ *   - Per the Twenty OpenAPI, the `soft_delete` query parameter defaults
+ *     to `false`, which means a bare DELETE call HARD-deletes the record.
+ *   - This factory ALWAYS passes `?soft_delete=true` so records are kept
+ *     in the database with a `deletedAt` timestamp and remain recoverable
+ *     through the Twenty UI or a future `twenty_<entity>_restore` tool.
+ *   - Hard-delete is intentionally not exposed in this plugin until a
+ *     dedicated `twenty_<entity>_destroy` tool is added (separate phase).
+ *
+ * Response shape: `{ data: { delete<Entity>: { id } } }` — we surface the
+ * id back to the agent so the call result is non-empty.
+ */
+export function buildDeleteTool(
+  client: TwentyClient,
+  spec: {
+    name: string;
+    description: string;
+    path: string;
+    entityKeySingular: string;
+  },
+) {
+  const responseKey = `delete${capitalize(spec.entityKeySingular)}`;
+  return defineTwentyTool(
+    {
+      name: spec.name,
+      description: spec.description,
+      mutates: true,
+      parameters: Type.Object({
+        id: Type.String({ description: "Record UUID to delete" }),
+      }),
+      run: async (params, c, signal) => {
+        const resp = await c.request<{ data?: Record<string, unknown> }>(
+          "DELETE",
+          `${spec.path}/${encodeURIComponent(params.id)}`,
+          // Snake-case on the wire per Twenty OpenAPI's `soft_delete` param.
+          { query: { soft_delete: true }, signal },
+        );
+        const record = resp?.data?.[responseKey];
+        return record ?? { id: params.id };
+      },
+    },
+    client,
+  );
+}

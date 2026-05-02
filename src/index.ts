@@ -23,6 +23,7 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 import { resolveConfig } from "./config.js";
+import { createApprovalHook } from "./hooks/approval.js";
 import { buildActivitiesTools } from "./tools/activities.js";
 import { buildCompaniesTools } from "./tools/companies.js";
 import { buildNotesTools } from "./tools/notes.js";
@@ -37,6 +38,7 @@ import type { TwentyPluginConfig } from "./types.js";
 // submodule, and so downstream packagers can depend on internals if they
 // need to (e.g. for an inspector tool).
 export { resolveConfig, resolveEnv } from "./config.js";
+export { createApprovalHook } from "./hooks/approval.js";
 export {
   TwentyClient,
   TwentyApiError,
@@ -111,14 +113,23 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
     (api.registerTool as (tool: unknown) => void)(tool);
   }
 
-  // Approval gating is intentionally NOT wired in this bootstrap — the
-  // `before_tool_call` hook arrives in P3 once the destructive tools
-  // exist. The `approvalRequired` list in the manifest is already shaped
-  // for that future hook.
+  // P3 — approval gating for destructive tools (`*_delete`, future bulk
+  // and merge helpers). The hook returns a `requireApproval` directive;
+  // the OpenClaw runtime is responsible for prompting the operator and
+  // denying the call when refused or on timeout.
+  const approvalHandler = createApprovalHook(config, api.logger);
+  // The SDK's `api.on<K>` is strongly typed per hook name; we cast at
+  // the boundary so we can keep our handler signature explicit (matches
+  // the wix-openclaw precedent).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (api.on as (event: string, handler: any) => void)(
+    "before_tool_call",
+    approvalHandler,
+  );
 
   api.logger.info(
     `twenty-openclaw: ready — ${allTools.length} tool(s) registered, ` +
-      `${config.approvalRequired.size} approval-gated (P3, not yet enforced), ` +
+      `${config.approvalRequired.size} approval-gated, ` +
       `${config.allowedWorkspaceIds.length} allowed workspace(s), ` +
       `readOnly=${config.readOnly}`,
   );
