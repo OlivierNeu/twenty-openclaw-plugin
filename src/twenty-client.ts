@@ -104,7 +104,10 @@ function buildQueryString(
  */
 export class TwentyClient {
   private readonly config: ResolvedTwentyConfig;
-  private readonly logger: TwentyLogger;
+  /** Public-readable logger so tool implementations can warn from
+   * non-fatal failures inside their `run()` body (e.g. an optional
+   * follow-up call that's allowed to fail silently). */
+  readonly logger: TwentyLogger;
   private readonly fetchImpl: typeof fetch;
 
   constructor(

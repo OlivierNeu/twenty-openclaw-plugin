@@ -6,6 +6,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-02
+
+### Added — P8 Twenty Workflows (25 tools)
+
+End-to-end coverage of Twenty's workflow surface: design / version /
+edit / run / report. Mirrors the LLM tools Twenty's own internal AI
+agent uses (port of `twenty-server/src/modules/workflow/workflow-tools/
+tools/`).
+
+#### Workflow-level (5 tools)
+
+- `twenty_workflows_list` — paginated list of workspace workflows.
+- `twenty_workflow_get` — joins Workflow + every WorkflowVersion +
+  N most recent WorkflowRuns in a single call.
+- `twenty_workflow_create_complete` — cascade
+  `POST /rest/workflows` → `POST /rest/workflowVersions` (with
+  trigger + steps inlined as JSON) → GraphQL edges → optional activation.
+  Mirrors Twenty's internal `create_complete_workflow` ordering invariants.
+- `twenty_workflow_duplicate` — wraps `duplicateWorkflow` mutation
+  (clones workflow + versions + steps + edges).
+- `twenty_workflow_delete` — HARD destroy (cascades to versions + runs).
+  **Approval-gated.**
+
+#### Version-level (6 tools)
+
+- `twenty_workflow_version_get_current` — returns `lastPublishedVersionId`
+  if set, else most recent DRAFT.
+- `twenty_workflow_version_create_draft` — fork an existing version
+  into a new DRAFT (`createDraftFromWorkflowVersion`). Required before
+  editing an ACTIVE version.
+- `twenty_workflow_version_activate` — sets status=ACTIVE.
+  **Approval-gated** with explicit prompt warning about production
+  impact (DATABASE_EVENT/CRON triggers fire automatically).
+- `twenty_workflow_version_deactivate` — sets status=DEACTIVATED.
+  **Approval-gated.**
+- `twenty_workflow_version_archive` — sets status=ARCHIVED (reversible
+  via `updateWorkflowVersion`, NOT approval-gated).
+- `twenty_workflow_version_delete` — HARD destroy. **Approval-gated.**
+
+#### Step + edge-level (9 tools)
+
+- `twenty_workflow_step_add` — adds a step (one of 17 action types).
+  For CODE steps, also auto-creates the underlying logicFunction.
+- `twenty_workflow_step_update` — replaces a step's full configuration.
+- `twenty_workflow_step_delete` — removes a step (drops incoming/outgoing
+  edges).
+- `twenty_workflow_step_duplicate` — clones a step.
+- `twenty_workflow_edge_add` — connects source → target.
+- `twenty_workflow_edge_delete` — removes an edge.
+- `twenty_workflow_compute_step_output_schema` — pre-computes the JSON
+  shape of a step's output so the agent can write correct
+  `{{<step-id>.result.x}}` refs in downstream steps.
+- `twenty_workflow_trigger_update` — replaces the trigger of a DRAFT
+  WorkflowVersion.
+- `twenty_workflow_positions_update` — bulk update of step + trigger
+  visual positions.
+- **None of the build tools are approval-gated** — the LLM iterates
+  rapidly during workflow construction, friction would cripple the flow.
+
+#### Run-level (4 tools)
+
+- `twenty_workflow_run` — executes a WorkflowVersion. **Approval-gated**
+  with an enriched prompt warning about side effects (SEND_EMAIL,
+  HTTP_REQUEST, CREATE_RECORD, etc.) — the operator can deny and
+  inspect via `twenty_workflow_get` before approving.
+- `twenty_workflow_run_stop` — sets status=STOPPING on an in-flight run.
+- `twenty_workflow_runs_list` — REST query with multi-filter:
+  workflowId, workflowVersionId, status (single value or array for
+  incident reports like `["FAILED", "STOPPED"]`), date range. Returns
+  computed `durationMs` per run.
+- `twenty_workflow_run_get` — full run detail formatted for reporting:
+  per-step status + errors, aggregated `stepStatusCounts`, parent
+  version snapshot, run duration.
+
+#### Logic functions (3 tools)
+
+- `twenty_logic_function_list` — `findManyLogicFunctions` (returns id,
+  name, source, linked workflow/step ids).
+- `twenty_logic_function_update_source` — replace TS source.
+- `twenty_logic_function_execute` — sandboxed test execution.
+
+### Added — `workflow-schemas.ts` TypeBox port
+
+- Direct port of `twenty-shared/src/workflow/schemas/` (Zod → TypeBox).
+- 4 trigger types fully typed (DATABASE_EVENT, MANUAL, CRON 4 sub-types,
+  WEBHOOK GET/POST).
+- 17 action types each with their action-specific settings shape:
+  CODE, LOGIC_FUNCTION, SEND_EMAIL, DRAFT_EMAIL, CREATE_RECORD,
+  UPDATE_RECORD, UPSERT_RECORD, DELETE_RECORD, FIND_RECORDS, FORM,
+  FILTER, IF_ELSE, HTTP_REQUEST, AI_AGENT, ITERATOR, EMPTY, DELAY.
+- StepFilter / StepFilterGroup / IfElseBranch shared types.
+- Variable reference helper (`{{trigger.x}}`, `{{<step-id>.result.x}}`).
+
+### Added — approval prompt enrichment
+
+- Per-tool `TOOL_CONTEXT` map in `hooks/approval.ts`. The
+  approval prompt now embeds a tool-specific warning paragraph for
+  the 5 high-risk workflow tools + `twenty_dashboard_replace_layout`,
+  so the operator sees the specific blast radius (e.g. "this RUNS THE
+  WORKFLOW — every step with side effects is executed for real").
+
+### Added — `TwentyClient.logger` exposed
+
+- The `logger` field on TwentyClient is now `readonly` instead of
+  `private`, so tool implementations can warn about non-fatal failures
+  (e.g. an optional follow-up call inside `workflow_create_complete`).
+
+### Approval gating defaults — 5 new
+
+`twenty_workflow_delete`, `twenty_workflow_version_activate`,
+`twenty_workflow_version_deactivate`, `twenty_workflow_version_delete`,
+`twenty_workflow_run`.
+
+### Tools count
+
+**83 total** (up from 58 in v0.5.0): 1 introspection + 9 read +
+1 timeline + 15 typed write + 6 helpers + 10 metadata + 5 generic
+record + 12 dashboard + 25 workflow.
+
+### Required permission — WORKFLOWS
+
+Workflow build (`*_step_*`, `*_edge_*`, `*_trigger_update`,
+`*_positions_update`, `compute_step_output_schema`) and action
+(`run`, `activate`, `deactivate`, `stop`, `create_draft`, `duplicate`)
+mutations require the API key user to have the `WORKFLOWS` permission
+flag. Standard CRUD on workflow records (list, get, create_complete,
+delete, runs_list, run_get) needs only entity-level read/write.
+
+Activate the flag in Twenty: **Settings → Members & Roles → Roles →
+[Admin] → check `Workflows`**. Without it, Twenty returns
+`Forbidden resource (FORBIDDEN)` on action mutations — mapped by the
+plugin to a clean tool failure.
+
+### Live validation
+
+- `createWorkflow` REST + `destroyWorkflow` GraphQL OK on
+  `crm.lacneu.com` (Ataraxis 2CF) without WORKFLOWS perm.
+- `runWorkflowVersion` rejected with `Forbidden resource` as expected
+  when WORKFLOWS perm is absent on the API key user.
+- 5 unit tests added (`workflows.test.ts`):
+  cascade ordering of `create_complete`, run_get formatting (status
+  counts + duration), approval prompt enrichment for `workflow_run`
+  and `version_activate`, FORBIDDEN error mapping.
+- All 52 plugin tests pass.
+
 ## [0.5.0] - 2026-05-02
 
 ### Added — P7 Twenty Dashboards (12 tools)

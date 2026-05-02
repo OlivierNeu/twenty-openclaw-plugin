@@ -9,7 +9,7 @@ gating on every destructive operation, an optional global read-only
 switch, and a small set of opinionated business helpers (export, dedup,
 bulk import, similarity search, relationship summary).
 
-> **Status: P0 → P7 shipped.** 58 tools, end-to-end validated live
+> **Status: P0 → P8 shipped.** 83 tools, end-to-end validated live
 > against `crm.lacneu.com` (Ataraxis). The plugin currently ships:
 >
 > - **1** introspection tool (`twenty_workspace_info`).
@@ -26,8 +26,12 @@ bulk import, similarity search, relationship summary).
 >   standard or custom (`record_list/get/create/update/delete`).
 > - **12** dashboard tools — build, modify, and inspect dashboards
 >   (PageLayouts + tabs + widgets + chart-data) directly from the chat.
-> - **`before_tool_call` approval hook** gating 19 destructive ops by
->   default.
+> - **25** workflow tools — design, version, activate, run, and report
+>   on workflows (4 trigger types, 17 action types, runs + logic
+>   functions) directly from the chat.
+> - **`before_tool_call` approval hook** gating 24 destructive ops by
+>   default, with per-tool context warnings on the 5 high-risk workflow
+>   ops.
 
 ---
 
@@ -103,7 +107,12 @@ substitution.
             "twenty_dashboard_delete",
             "twenty_dashboard_tab_delete",
             "twenty_dashboard_widget_delete",
-            "twenty_dashboard_replace_layout"
+            "twenty_dashboard_replace_layout",
+            "twenty_workflow_delete",
+            "twenty_workflow_version_activate",
+            "twenty_workflow_version_deactivate",
+            "twenty_workflow_version_delete",
+            "twenty_workflow_run"
           ],
           "allowedImportPaths": [
             "/home/node/.openclaw/",
@@ -125,7 +134,7 @@ substitution.
 | `serverUrl` | string | `https://crm.lacneu.com` | Base URL of the Twenty server (no trailing slash). |
 | `allowedWorkspaceIds` | string[] | `[]` | Whitelist of workspace UUIDs. Empty list ⇒ every workspace call is rejected. |
 | `defaultWorkspaceId` | string | first allowed | Workspace UUID used when a tool doesn't specify one. Must be in `allowedWorkspaceIds`. |
-| `approvalRequired` | string[] | 19 destructive tool names | Triggers an approval prompt via the `before_tool_call` hook. |
+| `approvalRequired` | string[] | 24 destructive tool names | Triggers an approval prompt via the `before_tool_call` hook. |
 | `allowedImportPaths` | string[] | `["/home/node/.openclaw/", "/tmp/"]` | Host-side prefix whitelist for `bulk_import_csv`. Validated with `fs.realpathSync` to defeat symlink + `..` traversal attacks. |
 | `readOnly` | boolean | `false` | When true, every tool with `mutates: true` is rejected at the plugin layer before any HTTP call. |
 | `logLevel` | string | `info` | `debug` includes request bodies (be mindful of PII). |
@@ -311,6 +320,141 @@ The Twenty API key must hold the `LAYOUTS` permission flag. Workspace-
 admin keys inherit it automatically; restricted keys require an admin
 to grant it explicitly through Twenty's role configuration.
 
+### Workflows (25 tools)
+
+Design, version, activate, run, and report on Twenty workflows — the
+full lifecycle from chat. Mirrors Twenty's internal workflow LLM
+tooling (`twenty-server/src/modules/workflow/workflow-tools/tools/`).
+
+A Twenty workflow is the union of 4 entities:
+
+```
+Workflow (record, REST /rest/workflows)
+   ├─ versions[]  ─→ WorkflowVersion (DRAFT/ACTIVE/DEACTIVATED/ARCHIVED)
+   │                   ├─ trigger (JSON: DATABASE_EVENT|MANUAL|CRON|WEBHOOK)
+   │                   └─ steps[]  ─→ WorkflowAction (17 types)
+   │                                   id, name, type, valid, settings, position
+   ├─ runs[]      ─→ WorkflowRun (each execution: status + state.stepInfos)
+   └─ automatedTriggers[]
+```
+
+#### Workflow-level (5)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_workflows_list` | Paginated list (id, name, statuses[], lastPublishedVersionId, timestamps). | No |
+| `twenty_workflow_get` | Joins workflow record + every WorkflowVersion + N most recent runs in one call. | No |
+| `twenty_workflow_create_complete` | Cascade: workflow record + version + N×steps + N×edges + (optional) activation. The big one. | Yes |
+| `twenty_workflow_duplicate` | `duplicateWorkflow` mutation (clones workflow + versions + steps + edges). | Yes |
+| `twenty_workflow_delete` | HARD destroy (cascades to versions + runs). **Approval-gated.** | Yes |
+
+#### Version-level (6)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_workflow_version_get_current` | Returns `lastPublishedVersionId` if set, else most recent DRAFT. | No |
+| `twenty_workflow_version_create_draft` | Fork an existing version into a new DRAFT (required before editing an ACTIVE version). | Yes |
+| `twenty_workflow_version_activate` | Set status=ACTIVE — **starts the workflow running in production**. **Approval-gated** with explicit warning. | Yes |
+| `twenty_workflow_version_deactivate` | Set status=DEACTIVATED. **Approval-gated.** | Yes |
+| `twenty_workflow_version_archive` | Set status=ARCHIVED (reversible — not gated). | Yes |
+| `twenty_workflow_version_delete` | HARD destroy. **Approval-gated.** | Yes |
+
+#### Step + edge-level (9)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_workflow_step_add` | Add a step (one of 17 action types). For CODE, also auto-creates the underlying logicFunction. | Yes |
+| `twenty_workflow_step_update` | Replace a step's full configuration. | Yes |
+| `twenty_workflow_step_delete` | Remove a step (drops incoming/outgoing edges). | Yes |
+| `twenty_workflow_step_duplicate` | Clone a step. | Yes |
+| `twenty_workflow_edge_add` | Connect source → target. Use source="trigger" for edges from the trigger. | Yes |
+| `twenty_workflow_edge_delete` | Remove an edge. | Yes |
+| `twenty_workflow_compute_step_output_schema` | Pre-compute the JSON shape of a step's output (so the agent can write correct `{{<step-id>.result.x}}` refs in downstream steps). | No |
+| `twenty_workflow_trigger_update` | Replace the trigger of a DRAFT version. | Yes |
+| `twenty_workflow_positions_update` | Bulk update visual positions (cosmetic). | Yes |
+
+**None gated by default.** The LLM iterates rapidly during build (add → check → tweak); approval prompts on every step would cripple the flow.
+
+#### Run-level (4)
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_workflow_run` | **Execute a WorkflowVersion**. Every step with side effects (SEND_EMAIL, HTTP_REQUEST, CREATE_RECORD, …) is executed for real. **Approval-gated** with explicit side-effects warning. | Yes |
+| `twenty_workflow_run_stop` | Stop an in-flight run (sets status=STOPPING). | Yes |
+| `twenty_workflow_runs_list` | List runs with multi-filter (workflow / version / status single or array / date range). Returns durationMs per run. | No |
+| `twenty_workflow_run_get` | Full run detail formatted for reporting: per-step status + errors, aggregated stepStatusCounts, parent version snapshot. | No |
+
+#### Logic functions (3)
+
+For CODE workflow steps. Live on `/metadata`.
+
+| Tool | Description | Mutates? |
+|---|---|---|
+| `twenty_logic_function_list` | List all logicFunctions in the workspace. | No |
+| `twenty_logic_function_update_source` | Replace the TypeScript source of a function. | Yes |
+| `twenty_logic_function_execute` | Sandboxed test run with arbitrary input. | Yes |
+
+#### Trigger types and configurations
+
+| Type | Settings | Use case |
+|---|---|---|
+| `DATABASE_EVENT` | `{ eventName: "objectName.action" }` (action ∈ created/updated/deleted/upserted) | Auto-react to record changes |
+| `MANUAL` | `{ availability: GLOBAL \| SINGLE_RECORD \| BULK_RECORDS }` | User-launched (button on record / global / bulk) |
+| `CRON` | `{ type: DAYS\|HOURS\|MINUTES, schedule }` or `{ type: CUSTOM, pattern: cronExpr }` | Scheduled |
+| `WEBHOOK` | `{ httpMethod: GET\|POST, authentication: API_KEY\|null, expectedBody?: object }` | External HTTP-triggered |
+
+#### Action types — the 17 step types
+
+Record CRUD: `CREATE_RECORD`, `UPDATE_RECORD`, `UPSERT_RECORD`,
+`DELETE_RECORD`, `FIND_RECORDS`. Email: `SEND_EMAIL`, `DRAFT_EMAIL`.
+Logic: `IF_ELSE`, `FILTER`, `ITERATOR`. AI: `AI_AGENT`. External:
+`HTTP_REQUEST`. Code: `CODE` (TS function), `LOGIC_FUNCTION` (alias).
+UX: `FORM`, `DELAY`, `EMPTY`. The `workflow-schemas.ts` file ports
+each action's settings shape directly from `twenty-shared/workflow/
+schemas/` so the LLM sees the canonical contract.
+
+#### Variable references between steps
+
+```
+{{trigger.object.fieldName}}       — DATABASE_EVENT triggered record
+{{trigger.record.fieldName}}       — MANUAL with single-record availability
+{{trigger.body.fieldName}}         — WEBHOOK POST body
+{{<step-uuid>.result.fieldName}}   — earlier step's output (UUID, not name)
+```
+
+Discover step ids via `twenty_workflow_get`. Pre-compute output
+schemas via `twenty_workflow_compute_step_output_schema` before
+referencing.
+
+#### Required permission
+
+The Twenty API key must be linked to a user who has the `WORKFLOWS`
+permission flag. **Settings Twenty → Members & Roles → Roles → [your
+role, typically Admin] → check `Workflows`**. Without it, Twenty
+returns `Forbidden resource (FORBIDDEN)` on action mutations
+(run/activate/deactivate/stop/createDraft/duplicate, plus the step +
+edge mutations). Standard CRUD on workflow records (list, get,
+create_complete, delete, runs_list, run_get) only requires entity-
+level read/write.
+
+#### Use case — campaigns
+
+Concretely, an agent can build campaign workflows like:
+
+```text
+Trigger MANUAL (with BULK_RECORDS availability on Company)
+  → step FIND_RECORDS on Company filtered by tag/label
+  → step ITERATOR on the result
+    → SEND_EMAIL inside the iterator
+    → CREATE_RECORD (Note linked to the company) for tracking
+```
+
+`twenty_workflow_create_complete` writes all this in one cascade. The
+operator activates with `twenty_workflow_version_activate`, then
+launches with `twenty_workflow_run` (both approval-gated). After
+execution, `twenty_workflow_run_get` returns the run's
+stepStatusCounts and per-step errors so the agent can write a report.
+
 ## Custom data modelling workflow (live demo)
 
 End-to-end flow exercised against the Ataraxis 2CF workspace:
@@ -438,6 +582,10 @@ npm run build
   (PageLayout + tabs + widgets + chart-data). ✅
   *(approval gates only irreversible destructions; construction stays
   friction-free)*
+- **P8** — Workflows: 25 tools (5 workflow + 6 version + 9 step/edge +
+  4 run + 3 logic-function). Design / activate / run / report end-to-
+  end. Approval gates only irreversible destructions + production-
+  impact ops (activate / deactivate / run). ✅
 
 ### Future
 

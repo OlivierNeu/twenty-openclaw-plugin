@@ -50,6 +50,42 @@ const DEFAULT_TIMEOUT_MS = 600_000; // 10 minutes
 const PARAM_PREVIEW_CHARS = 600;
 
 /**
+ * Per-tool extra context surfaced in the approval prompt. Lets us warn
+ * the operator about the specific blast radius of the tool — much more
+ * useful than the generic "Tool X is about to run" header.
+ *
+ * Workflow tools especially benefit from this: `twenty_workflow_run`
+ * actually executes the workflow (sends emails, makes HTTP calls, etc.),
+ * and the operator deserves to see that explicitly.
+ */
+const TOOL_CONTEXT: Record<string, string> = {
+  twenty_workflow_run:
+    "**WARNING: this RUNS THE WORKFLOW** — every step with side effects " +
+    "(SEND_EMAIL, HTTP_REQUEST, CREATE_RECORD, DELETE_RECORD, …) is " +
+    "executed for real. To preview what the workflow will do, deny this " +
+    "and call `twenty_workflow_get` first to inspect the flow.",
+  twenty_workflow_version_activate:
+    "**This puts the version in PRODUCTION**. DATABASE_EVENT and CRON " +
+    "triggers will fire automatically on matching events / schedule. Make " +
+    "sure the steps are configured correctly before activating.",
+  twenty_workflow_version_deactivate:
+    "**This stops the version**. Any in-flight runs continue, but new " +
+    "automated triggers won't fire. Use `twenty_workflow_run_stop` to " +
+    "stop in-flight runs explicitly.",
+  twenty_workflow_version_delete:
+    "**HARD-delete** of the version (cascades to its WorkflowRuns). " +
+    "Irreversible. Prefer `twenty_workflow_version_archive` for cleanup " +
+    "without losing history.",
+  twenty_workflow_delete:
+    "**HARD-delete** of the workflow + every version + every run. " +
+    "Irreversible.",
+  twenty_dashboard_replace_layout:
+    "Atomic replacement of the dashboard layout — anything not in the " +
+    "input is destroyed. Tabs and widgets without an `id` are created; " +
+    "those with `id` are kept.",
+};
+
+/**
  * Truncate the parameter snapshot so we never surface a wall of JSON to
  * the operator. We strip `workspaceId` since it's covered by the config
  * and adds noise to the prompt.
@@ -81,11 +117,13 @@ export function createApprovalHook(
     if (!config.enabled) return undefined;
     if (!config.approvalRequired.has(event.toolName)) return undefined;
 
+    const extraContext = TOOL_CONTEXT[event.toolName];
     const description =
       `Tool \`${event.toolName}\` is about to run with the following parameters:\n\n` +
       "```json\n" +
       previewParams(event.params) +
       "\n```\n\n" +
+      (extraContext ? `${extraContext}\n\n` : "") +
       "Approve to execute, deny to cancel. The call will deny automatically " +
       "if no decision is made within 10 minutes.";
 

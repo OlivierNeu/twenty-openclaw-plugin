@@ -32,6 +32,7 @@ import { buildDashboardTabTools } from "./tools/dashboard-tabs.js";
 import { buildDashboardWidgetTools } from "./tools/dashboard-widgets.js";
 import { buildDedupTools } from "./tools/dedup.js";
 import { buildExportTools } from "./tools/export.js";
+import { buildLogicFunctionTools } from "./tools/logic-functions.js";
 import { buildMetadataTools } from "./tools/metadata.js";
 import { buildNotesTools } from "./tools/notes.js";
 import { buildOpportunitiesTools } from "./tools/opportunities.js";
@@ -39,6 +40,10 @@ import { buildPeopleTools } from "./tools/people.js";
 import { buildRecordTools } from "./tools/records.js";
 import { buildSummarizeTools } from "./tools/summarize.js";
 import { buildTasksTools } from "./tools/tasks.js";
+import { buildWorkflowTools } from "./tools/workflows.js";
+import { buildWorkflowRunTools } from "./tools/workflow-runs.js";
+import { buildWorkflowStepTools } from "./tools/workflow-steps.js";
+import { buildWorkflowVersionTools } from "./tools/workflow-versions.js";
 import { buildWorkspaceTools } from "./tools/workspace.js";
 import { TwentyClient } from "./twenty-client.js";
 import type { TwentyPluginConfig } from "./types.js";
@@ -131,6 +136,16 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
   //      Approval gates only the irreversible destructions
   //      (dashboard_delete, tab_delete, widget_delete, replace_layout)
   //      so the LLM can iterate on construction without friction.
+  // P8: workflows — 25 tools (5 workflow-level, 6 version-level, 9 step
+  //      + edge-level, 4 run-level, 3 logic-function-level). Mirrors
+  //      Twenty's internal workflow LLM tools (workflow-tools/tools/).
+  //      Build is on /graphql + /metadata; reading uses REST CRUD.
+  //      Action mutations require the API key user to have the
+  //      `WORKFLOWS` permission flag (read CRUD does not).
+  //      Approval gates 5 entries: workflow_delete,
+  //      workflow_version_activate / _deactivate / _delete, workflow_run.
+  //      Construction tools (*_add, *_update, create_complete) are NOT
+  //      gated — the LLM iterates rapidly during build.
   const allTools = [
     ...buildWorkspaceTools(client),
     ...buildPeopleTools(client),
@@ -150,6 +165,11 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
     ...buildDashboardTools(client),
     ...buildDashboardTabTools(client),
     ...buildDashboardWidgetTools(client),
+    ...buildWorkflowTools(client),
+    ...buildWorkflowVersionTools(client),
+    ...buildWorkflowStepTools(client),
+    ...buildWorkflowRunTools(client),
+    ...buildLogicFunctionTools(client),
   ];
 
   for (const tool of allTools) {
