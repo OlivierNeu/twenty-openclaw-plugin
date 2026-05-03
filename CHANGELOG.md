@@ -6,6 +6,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-05-03
+
+### Added — `activation.onStartup: true` in the manifest
+
+OpenClaw 2026.5.2 introduces (or hardens) a manifest-driven activation
+gate. Plugins that do NOT declare `activation.onStartup: true` are
+loaded into the plugin registry and `api.registerTool(...)` calls
+succeed at runtime — the boot log shows
+`twenty-openclaw: ready — 86 tool(s) registered` — but those
+registered tools never propagate into the per-agent effective tool
+inventory resolved by `tools-effective-inventory.ts`. Operators see:
+
+- `tools.alsoAllow: ["<tool_name>"]` entries logged as
+  "unknown entries (...) won't match any tool unless the plugin is
+  enabled" even though the plugin is `enabled: true` in config.
+- The agent reports 0 callable `twenty_*` tools while the plugin
+  catalogue, `plugins inspect twenty-openclaw --runtime --json`,
+  and the gateway boot log all confirm 86 registered tools.
+
+Empirical observation on instance jerome (2026-05-03): patching the
+installed manifest in-container with `activation.onStartup: true`
+resolved the warning in some boot iterations but did not restore
+agent visibility — confirming that the manifest must ship the field
+declaratively from the published package, not via post-install
+mutation.
+
+### Why skip 0.7.2
+
+`@lacneu/twenty-openclaw@0.7.2` was published outside the repo with
+the same content as 0.7.1 plus a manifest patch experiment that
+this release supersedes. The 0.7.3 history continues from 0.7.1 in
+git: `version` field bumped, `activation` block added, no other
+manifest content change.
+
+### Migration
+
+For instance owners on `@lacneu/twenty-openclaw@0.7.x`:
+
+1. `openclaw plugins install @lacneu/twenty-openclaw@0.7.3 --force`
+2. Restart the gateway container.
+3. Verify in the boot log:
+   `twenty-openclaw: ready — 86 tool(s) registered, 24 approval-gated`.
+4. Verify in `openclaw plugins inspect twenty-openclaw --runtime --json`:
+   `"activated": true` AND `"activationSource"` should now reflect
+   `"manifest"` (rather than only `"explicit"` from config).
+5. Test from an agent: `twenty_companies_list` (or any other
+   `twenty_*` tool) should now appear in the agent inventory.
+
+### Notes
+
+- No code change in `src/`. Manifest-only.
+- `tools.alsoAllow` listing the 86 individual tool names should no
+  longer be required once the plugin advertises `activation.onStartup`
+  declaratively. To be confirmed by `tools.alsoAllow` simplification
+  after deployment.
+
 ## [0.7.1] - 2026-05-03
 
 ### Fixed — `DEFAULT_APPROVAL_REQUIRED` desync with the manifest
