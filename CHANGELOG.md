@@ -6,6 +6,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-02
+
+### Compat — OpenClaw 2026.5.2 SDK breaking change
+
+OpenClaw 2026.5.2 introduces a manifest contract for plugin tool
+ownership: `api.registerTool()` calls are **rejected at runtime** for
+tool names that are not declared in `contracts.tools` of the plugin
+manifest.
+
+Without this release, `@lacneu/twenty-openclaw` would load on
+2026.5.2 with **0 tools registered** instead of 86 (the contract
+violation is enforced silently or with a runtime warning depending
+on the OpenClaw log level).
+
+### Added — `contracts.tools` (86 entries)
+
+- `openclaw.plugin.json` now declares every tool the plugin owns
+  under `contracts.tools` as a flat array of strings. Mirrors the
+  86 tools registered by `registerTwentyPlugin(api)`:
+  - 1 introspection (`twenty_workspace_info`)
+  - 9 typed read + 1 timeline (people / companies / opportunities /
+    notes / tasks list+get + activities_list_for)
+  - 15 typed write (5 entities × create/update/delete)
+  - 6 helpers (export, find_similar, 2 dedup, bulk_import, summarize)
+  - 10 metadata (5 objects + 5 fields)
+  - 5 generic record dispatch
+  - 12 dashboard (5 dashboard + 3 tab + 4 widget)
+  - 25 workflow (5 workflow + 6 version + 9 step/edge + 4 run + 3
+    logic-function)
+  - 2 = 86 tools.
+
+### Added — `toolMetadata._default` config signal
+
+- Tells OpenClaw 2026.5.2's tool descriptor planner that every tool
+  in this plugin requires `plugins.entries.twenty-openclaw.config.apiKey`
+  to be configured. The platform skips loading the plugin runtime when
+  the apiKey is missing (cheap availability check at reply startup,
+  per the new manifest spec).
+
+### Notes — what 2026.5.2 does NOT fix
+
+- The safeguard compaction bugs (issues #15669, #7477, #71325, #44370)
+  are **not addressed** in 2026.5.2. The codex-style provider edge case
+  (`ownsCompaction=true` skips safeguard) is unchanged. Continue using
+  the workarounds documented in `openclaw-notes/docs/RUNBOOK-CONTEXT-OVERFLOW.md`:
+  `maxActiveTranscriptBytes`, `truncateAfterCompaction`, `notifyUser`,
+  and `/compact` slash command.
+- Codex provider naming (`openai-codex/gpt-5.5` vs `openai/gpt-5.5` +
+  `agentRuntime.id: "codex"`) is **not breaking** — the old PI OAuth
+  route stays supported. No config migration required for existing
+  instances.
+
+### Notes — useful improvements in 2026.5.2 (no plugin code change)
+
+- `session.writeLock.acquireTimeoutMs` raised to 60 s by default —
+  fewer user-visible lock timeouts during long compactions.
+- Pre-compaction memory flush turn no longer rejected as empty user
+  message by strict Anthropic providers.
+- Implicit summarization fallback chain — Azure content-filter 400s
+  can recover.
+- One-time configured-plugin install repair runs automatically based
+  on `meta.lastTouchedVersion` after the upgrade.
+
+### Migration steps for instance owners
+
+1. Bump the npm dependency to `@lacneu/twenty-openclaw@0.7.0` (or
+   re-`openclaw plugins install @lacneu/twenty-openclaw` after the
+   2026.5.2 upgrade so the install repair picks up v0.7.0).
+2. `openclaw doctor --fix` after upgrading OpenClaw, to migrate any
+   legacy keys (threadBindings, Discord per-channel agentId, etc.).
+3. `openclaw config reload` to pick up the new manifest.
+4. Verify in the gateway log: `twenty-openclaw: ready — 86 tool(s)
+   registered, 24 approval-gated`.
+
 ## [0.6.0] - 2026-05-02
 
 ### Added — P8 Twenty Workflows (25 tools)
