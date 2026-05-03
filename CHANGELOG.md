@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-05-03
+
+### Changed — compat aligned to 2026.5.0
+
+After empirical validation that the plugin manifest fields
+(`contracts.tools`, `activation.onStartup`, `toolMetadata`) we
+introduced in 0.7.0–0.7.3 are 2026.5.x-specific, we now declare
+the minimum supported OpenClaw version as 2026.5.0:
+
+- `package.json#openclaw.compat`:
+  `pluginApi: ">=2026.4.0"` → `">=2026.5.0"`,
+  `minGatewayVersion: "2026.4.0"` → `"2026.5.0"`.
+- `peerDependencies.openclaw` and `devDependencies.openclaw`:
+  `">=2026.4.0"` → `">=2026.5.0"`.
+
+### Notes
+
+- No code change in `src/`. No manifest content change.
+- 52/52 tests still pass.
+- Operators on OpenClaw 2026.4.x must keep `@lacneu/twenty-openclaw@0.7.0`
+  (last release without the strict `contracts.tools` enforcement
+  contract). 2026.5.0+ users should be on 0.7.4.
+- Reminder: OpenClaw 2026.5.2 has a separate per-agent inventory bug
+  (issue #76598, fix in `a3b94f39109d` pending in 2026.5.3) that
+  prevents twenty's tools from appearing in the agent's callable
+  inventory. This release does not work around that — the plugin is
+  ready and registered correctly, but the upstream fix is still
+  required for end-to-end functionality.
+
 ## [0.7.3] - 2026-05-03
 
 ### Added — `activation.onStartup: true` in the manifest
