@@ -1,6 +1,6 @@
 {
   "name": "@lacneu/twenty-openclaw",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "description": "Twenty CRM plugin for OpenClaw — full CRUD on people / companies / opportunities / notes / tasks, custom objects + fields via the Metadata API, dashboards (charts, tabs, widgets), and workflows (triggers, steps, edges, runs, logic functions) with workspace whitelist and approval gating on destructive operations and workflow execution.",
   "license": "MIT",

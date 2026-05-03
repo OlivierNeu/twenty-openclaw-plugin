@@ -6,6 +6,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-05-03
+
+### Fixed — `DEFAULT_APPROVAL_REQUIRED` desync with the manifest
+
+The `DEFAULT_APPROVAL_REQUIRED` constant in `src/config.ts` was still
+the P3+P5 list (14 entries). The plugin manifest
+(`configSchema.properties.approvalRequired.default`) had been updated
+to 24 entries to cover P6 (record_delete), P7 (dashboard_delete /
+tab_delete / widget_delete / replace_layout) and P8 (workflow_delete
+/ version_activate / version_deactivate / version_delete / workflow_run),
+but the runtime path
+`cfg.approvalRequired ?? DEFAULT_APPROVAL_REQUIRED` reads the code
+constant — not the manifest default — so any instance without an
+explicit operator override would silently leave **10 destructive
+tools un-gated**.
+
+After this release, instances that rely on the plugin default get the
+full 24-entry list and the boot log will report
+`24 approval-gated` instead of `14`. Operators who maintain their own
+override in `plugins.entries.twenty-openclaw.config.approvalRequired`
+should align it (or unset it to inherit the new default).
+
+### Notes
+
+- No tool surface change. No SDK breaking change.
+- `openclaw.plugin.json` is unchanged in content; only the `version`
+  field is bumped to `0.7.1`. The manifest already had the 24 entries
+  since 0.7.0.
+- A code comment at the top of `DEFAULT_APPROVAL_REQUIRED` now warns
+  future maintainers to keep the constant byte-aligned with the
+  manifest.
+
 ## [0.7.0] - 2026-05-02
 
 ### Compat — OpenClaw 2026.5.2 SDK breaking change

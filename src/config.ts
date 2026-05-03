@@ -24,6 +24,11 @@ export function resolveEnv<T>(value: T): T {
 
 const DEFAULT_SERVER_URL = "https://crm.lacneu.com";
 
+// Must stay byte-aligned with `configSchema.properties.approvalRequired.default`
+// in `openclaw.plugin.json`. The manifest is the surface operators see
+// (UI hints, validation); this constant is what the runtime actually
+// uses when no operator override is present. Drift between the two
+// silently leaves destructive tools un-gated — see CHANGELOG 0.7.1.
 const DEFAULT_APPROVAL_REQUIRED = [
   "twenty_people_delete",
   "twenty_companies_delete",
@@ -42,6 +47,25 @@ const DEFAULT_APPROVAL_REQUIRED = [
   "twenty_metadata_field_create",
   "twenty_metadata_field_update",
   "twenty_metadata_field_delete",
+  // P6 — generic record dispatch. Only delete is gated; create/update
+  // mirror the per-entity precedent (ungated by default).
+  "twenty_record_delete",
+  // P7 — dashboards. Gated entries are the irreversible destructions;
+  // construction tools (*_add, *_update, create_complete, duplicate)
+  // are left ungated so the LLM can iterate on layouts without friction.
+  "twenty_dashboard_delete",
+  "twenty_dashboard_tab_delete",
+  "twenty_dashboard_widget_delete",
+  "twenty_dashboard_replace_layout",
+  // P8 — workflows. Gates the irreversible destructions plus state
+  // transitions that have user-visible side effects (activation flips
+  // a workflow into the live trigger registry; run launches an actual
+  // execution against workspace data).
+  "twenty_workflow_delete",
+  "twenty_workflow_version_activate",
+  "twenty_workflow_version_deactivate",
+  "twenty_workflow_version_delete",
+  "twenty_workflow_run",
 ];
 
 /**
