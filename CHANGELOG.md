@@ -6,6 +6,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-09
+
+### Fixed — `Type.Intersect` schemas rejected by OpenAI (regression in v0.8.0)
+
+Two list-columns tools (`twenty_list_columns_set_order` and
+`twenty_list_columns_set_visibility`) used `Type.Intersect([Target,
+Object{...}])` from TypeBox to compose their parameter schema. TypeBox's
+`Intersect` emits `allOf` at the top level of the resulting JSON
+schema. OpenAI's function-tool format **rejects** any function whose
+top-level schema uses `allOf` / `oneOf` / `anyOf` / `enum` / `not` —
+the agent surfaced this as:
+
+```
+LLM request rejected: Invalid schema for function
+'twenty_list_columns_set_order': schema must have type 'object' and
+not have 'oneOf'/'anyOf'/'allOf'/'enum'/'not' at the top level.
+```
+
+In production this pinned the agent's event loop in a retry loop
+(`eventLoopDelayMaxMs=7574.9` observed on the gateway).
+
+### Changed
+
+- `src/tools/list-columns.ts` — both schemas rewritten as flat
+  `Type.Object({...})` with `viewId` + `objectMetadataId` inlined
+  alongside the tool-specific fields. No behavioral change.
+- `test/tools/openai-schema-compat.test.ts` — new regression-guard
+  test that walks every registered tool from every builder
+  (148+ tools across 23 builders) and asserts the parameter schema
+  is `type: "object"` with no `allOf` / `oneOf` / `anyOf` / `enum` /
+  `not` at the top level. Catches future regressions of this exact
+  shape at CI time.
+
+### Notes
+
+- 74/74 tests pass after the fix (73 + 1 new schema-compat guard).
+- No behavioral change to the tools' contracts — the agent uses them
+  identically.
+- v0.8.0 is **rendered unusable for these two tools** by the OpenAI
+  API rejection. Operators on v0.8.0 should upgrade immediately.
+
 ## [0.8.0] - 2026-05-09
 
 ### Added — Surface 3: Field configuration (5 tools)

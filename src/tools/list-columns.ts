@@ -194,38 +194,66 @@ const TargetSchema = Type.Object(
   },
 );
 
-const SetOrderSchema = Type.Intersect([
-  TargetSchema,
-  Type.Object({
-    orderedFieldMetadataIds: Type.Array(Type.String(), {
+// NOTE — TypeBox `Type.Intersect` generates `allOf` at the top level of
+// the JSON schema. OpenAI rejects function tools whose top-level schema
+// uses `oneOf` / `anyOf` / `allOf` / `enum` / `not` (verified live on
+// 2026-05-09 against the embedded codex provider with v0.8.0). We
+// therefore inline TargetSchema's two optional fields (viewId,
+// objectMetadataId) directly into each schema instead of intersecting.
+const SetOrderSchema = Type.Object({
+  viewId: Type.Optional(
+    Type.String({
+      description:
+        "Target view UUID. If omitted, the plugin auto-resolves the " +
+        "default INDEX TABLE view of objectMetadataId.",
+    }),
+  ),
+  objectMetadataId: Type.Optional(
+    Type.String({
+      description:
+        "Parent object UUID. Used to auto-resolve the default INDEX " +
+        "TABLE view when viewId is omitted.",
+    }),
+  ),
+  orderedFieldMetadataIds: Type.Array(Type.String(), {
+    minItems: 1,
+    description:
+      "Field metadata UUIDs in the desired column order. Each entry " +
+      "MUST already correspond to a ViewField on the view (call " +
+      "twenty_list_columns_get first to discover them). The plugin " +
+      "assigns positions 0, 1, 2, ... matching the array order. " +
+      "ViewFields not listed keep their current position.",
+  }),
+});
+
+const SetVisibilitySchema = Type.Object({
+  viewId: Type.Optional(
+    Type.String({
+      description:
+        "Target view UUID. If omitted, the plugin auto-resolves the " +
+        "default INDEX TABLE view of objectMetadataId.",
+    }),
+  ),
+  objectMetadataId: Type.Optional(
+    Type.String({
+      description:
+        "Parent object UUID. Used to auto-resolve the default INDEX " +
+        "TABLE view when viewId is omitted.",
+    }),
+  ),
+  visibility: Type.Array(
+    Type.Object({
+      fieldMetadataId: Type.String(),
+      isVisible: Type.Boolean(),
+    }),
+    {
       minItems: 1,
       description:
-        "Field metadata UUIDs in the desired column order. Each entry " +
-        "MUST already correspond to a ViewField on the view (call " +
-        "twenty_list_columns_get first to discover them). The plugin " +
-        "assigns positions 0, 1, 2, ... matching the array order. " +
-        "ViewFields not listed keep their current position.",
-    }),
-  }),
-]);
-
-const SetVisibilitySchema = Type.Intersect([
-  TargetSchema,
-  Type.Object({
-    visibility: Type.Array(
-      Type.Object({
-        fieldMetadataId: Type.String(),
-        isVisible: Type.Boolean(),
-      }),
-      {
-        minItems: 1,
-        description:
-          "Bulk visibility toggle keyed by fieldMetadataId. Entries " +
-          "without a matching ViewField on the view are skipped.",
-      },
-    ),
-  }),
-]);
+        "Bulk visibility toggle keyed by fieldMetadataId. Entries " +
+        "without a matching ViewField on the view are skipped.",
+    },
+  ),
+});
 
 const SetSizeSchema = Type.Object({
   viewFieldId: Type.String({
