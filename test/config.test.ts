@@ -10,11 +10,11 @@ import { describe, it } from "node:test";
 import { resolveConfig, resolveEnv } from "../src/config.js";
 
 describe("resolveConfig", () => {
-  it("applies defaults when given an empty config", () => {
-    const cfg = resolveConfig({});
+  it("applies defaults when given a minimal config (serverUrl only)", () => {
+    const cfg = resolveConfig({ serverUrl: "https://crm.test.local" });
     assert.equal(cfg.enabled, true);
     assert.equal(cfg.apiKey, "");
-    assert.equal(cfg.serverUrl, "https://crm.lacneu.com");
+    assert.equal(cfg.serverUrl, "https://crm.test.local");
     assert.deepEqual(cfg.allowedWorkspaceIds, []);
     assert.equal(cfg.defaultWorkspaceId, "");
     assert.equal(cfg.readOnly, false);
@@ -24,14 +24,40 @@ describe("resolveConfig", () => {
     //                 dedup_auto_merge + bulk_import_csv + bulk_delete)
     //   6  P5 metadata mutations (object/field × create/update/delete)
     //   1  P6 generic record dispatch (record_delete)
-    //   4  P7 dashboards (dashboard/tab/widget delete + replace_layout)
     //   5  P8 workflows (workflow_delete + version × activate/deactivate/
     //                    delete + workflow_run)
-    //   = 24.
+    //   7  v0.8.0 PR1 Views (view_destroy + 6 child destroys:
+    //       view_field_destroy, view_field_group_destroy,
+    //       view_filter_destroy, view_filter_group_destroy,
+    //       view_sort_destroy, view_group_destroy)
+    //   1  v0.8.0 PR2 List columns (list_columns_reset_default)
+    //   7  v0.8.0 PR3 Page layouts (page_layout × destroy/
+    //       reset_to_default/replace_with_tabs + tab × destroy/
+    //       reset_to_default + widget × destroy/reset_to_default)
+    //   5  v0.8.0 PR4 Field config (every field-level wrapper is gated
+    //       because metadata mutations affect every record)
+    //  11  v0.8.0 PR5 Roles & Permissions (every write — create/update/
+    //       delete + 4 assignments + 4 upserts)
+    //   1  v0.8.0 PR6 Workspace settings (run_migration; updateWorkspace
+    //       was scoped out — Twenty 2.1 requires user context for it)
+    //   = 52.
     // Must stay aligned with `DEFAULT_APPROVAL_REQUIRED` in src/config.ts
     // and `configSchema.properties.approvalRequired.default` in
     // openclaw.plugin.json.
-    assert.equal(cfg.approvalRequired.size, 24);
+    assert.equal(cfg.approvalRequired.size, 52);
+  });
+
+  it("throws when serverUrl is missing (no default since v0.8.0)", () => {
+    assert.throws(() => resolveConfig({}), /serverUrl.*required/);
+  });
+
+  it("throws when serverUrl resolves to empty after env substitution", () => {
+    delete process.env.TWENTY_TEST_MISSING_SERVER_URL;
+    assert.throws(
+      () =>
+        resolveConfig({ serverUrl: "${TWENTY_TEST_MISSING_SERVER_URL}" }),
+      /serverUrl.*required/,
+    );
   });
 
   it("strips a trailing slash from serverUrl", () => {
@@ -41,6 +67,7 @@ describe("resolveConfig", () => {
 
   it("falls back to the first allowed workspace as default", () => {
     const cfg = resolveConfig({
+      serverUrl: "https://crm.test.local",
       allowedWorkspaceIds: ["ws-a", "ws-b"],
     });
     assert.equal(cfg.defaultWorkspaceId, "ws-a");
@@ -50,6 +77,7 @@ describe("resolveConfig", () => {
     assert.throws(
       () =>
         resolveConfig({
+          serverUrl: "https://crm.test.local",
           allowedWorkspaceIds: ["ws-a"],
           defaultWorkspaceId: "ws-rogue",
         }),

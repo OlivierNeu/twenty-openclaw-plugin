@@ -10,7 +10,7 @@ switch, and a small set of opinionated business helpers (export, dedup,
 bulk import, similarity search, relationship summary).
 
 > **Status: P0 → P8 shipped.** 83 tools, end-to-end validated live
-> against `crm.lacneu.com` (Ataraxis). The plugin currently ships:
+> against a Twenty 2.1 production instance. The plugin currently ships:
 >
 > - **1** introspection tool (`twenty_workspace_info`).
 > - **9** typed read tools (list/get on People, Companies,
@@ -85,7 +85,7 @@ substitution.
         "config": {
           "enabled": true,
           "apiKey": "${TWENTY_API_KEY}",
-          "serverUrl": "https://crm.lacneu.com",
+          "serverUrl": "https://crm.example.com",
           "allowedWorkspaceIds": ["${TWENTY_WORKSPACE_ID}"],
           "defaultWorkspaceId": "${TWENTY_WORKSPACE_ID}",
           "approvalRequired": [
@@ -131,7 +131,7 @@ substitution.
 |---|---|---|---|
 | `enabled` | boolean | `true` | Master switch — disables all tools when false. |
 | `apiKey` | string | — | Twenty API key. Sent as `Authorization: Bearer <key>`. |
-| `serverUrl` | string | `https://crm.lacneu.com` | Base URL of the Twenty server (no trailing slash). |
+| `serverUrl` | string | **required** (since v0.8.0) | Base URL of the Twenty server (no trailing slash). The plugin no longer ships a default — every deployment declares its own. |
 | `allowedWorkspaceIds` | string[] | `[]` | Whitelist of workspace UUIDs. Empty list ⇒ every workspace call is rejected. |
 | `defaultWorkspaceId` | string | first allowed | Workspace UUID used when a tool doesn't specify one. Must be in `allowedWorkspaceIds`. |
 | `approvalRequired` | string[] | 24 destructive tool names | Triggers an approval prompt via the `before_tool_call` hook. |
@@ -526,7 +526,7 @@ and receive a JSON summary like:
 
 ```json
 {
-  "workspaceUrl": "https://crm.lacneu.com",
+  "workspaceUrl": "https://crm.example.com",
   "objectCount": 12,
   "customObjectCount": 2,
   "objects": [

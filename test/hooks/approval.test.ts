@@ -15,7 +15,7 @@ const SILENT_LOGGER = {
 
 describe("approval hook", () => {
   it("returns undefined for read tools NOT in approvalRequired", () => {
-    const config = resolveConfig({ apiKey: "k" });
+    const config = resolveConfig({ apiKey: "k", serverUrl: "https://crm.test.local" });
     const handler = createApprovalHook(config, SILENT_LOGGER);
 
     const result = handler({
@@ -26,7 +26,7 @@ describe("approval hook", () => {
   });
 
   it("returns requireApproval (severity=critical, deny on timeout) for default destructive tools", () => {
-    const config = resolveConfig({ apiKey: "k" });
+    const config = resolveConfig({ apiKey: "k", serverUrl: "https://crm.test.local" });
     const handler = createApprovalHook(config, SILENT_LOGGER);
 
     const result = handler({
@@ -49,7 +49,7 @@ describe("approval hook", () => {
 
   it("strips workspaceId from the parameter preview", () => {
     const config = resolveConfig({
-      apiKey: "k",
+      apiKey: "k", serverUrl: "https://crm.test.local",
       allowedWorkspaceIds: ["ws-1"],
       defaultWorkspaceId: "ws-1",
     });
@@ -69,7 +69,7 @@ describe("approval hook", () => {
   });
 
   it("respects custom approvalRequired list (empty disables gating)", () => {
-    const config = resolveConfig({ apiKey: "k", approvalRequired: [] });
+    const config = resolveConfig({ apiKey: "k", serverUrl: "https://crm.test.local", approvalRequired: [] });
     const handler = createApprovalHook(config, SILENT_LOGGER);
 
     const result = handler({
@@ -80,7 +80,7 @@ describe("approval hook", () => {
   });
 
   it("returns undefined when the plugin is disabled", () => {
-    const config = resolveConfig({ apiKey: "k", enabled: false });
+    const config = resolveConfig({ apiKey: "k", serverUrl: "https://crm.test.local", enabled: false });
     const handler = createApprovalHook(config, SILENT_LOGGER);
 
     const result = handler({
@@ -91,7 +91,7 @@ describe("approval hook", () => {
   });
 
   it("never sets pluginId — runner injects it", () => {
-    const config = resolveConfig({ apiKey: "k" });
+    const config = resolveConfig({ apiKey: "k", serverUrl: "https://crm.test.local" });
     const handler = createApprovalHook(config, SILENT_LOGGER);
 
     const result = handler({

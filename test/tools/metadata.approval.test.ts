@@ -34,7 +34,7 @@ const UNGATED_METADATA_TOOLS = [
 
 describe("metadata approval gating (default config)", () => {
   it("gates every metadata write tool with severity=critical", () => {
-    const config = resolveConfig({ apiKey: "k" });
+    const config = resolveConfig({ apiKey: "k", serverUrl: "https://crm.test.local" });
     const handler = createApprovalHook(config, SILENT_LOGGER);
 
     for (const toolName of GATED_METADATA_TOOLS) {
@@ -56,7 +56,7 @@ describe("metadata approval gating (default config)", () => {
   });
 
   it("does NOT gate metadata read tools", () => {
-    const config = resolveConfig({ apiKey: "k" });
+    const config = resolveConfig({ apiKey: "k", serverUrl: "https://crm.test.local" });
     const handler = createApprovalHook(config, SILENT_LOGGER);
 
     for (const toolName of UNGATED_METADATA_TOOLS) {
@@ -73,7 +73,7 @@ describe("metadata approval gating (default config)", () => {
     "approvalRequired default contains every metadata write tool (manifest " +
       "and config.ts must stay in sync)",
     () => {
-      const config = resolveConfig({ apiKey: "k" });
+      const config = resolveConfig({ apiKey: "k", serverUrl: "https://crm.test.local" });
       for (const toolName of GATED_METADATA_TOOLS) {
         assert.ok(
           config.approvalRequired.has(toolName),

@@ -1,6 +1,6 @@
 // Twenty Metadata API tools — manage custom objects and custom fields.
 //
-// Verified empirically against `https://crm.lacneu.com/rest/metadata/*` on
+// Verified empirically against a Twenty 2.1 `/rest/metadata/*` instance on
 // 2026-05-02 (P5 live tests):
 //   - Base path:           `/rest/metadata/objects`, `/rest/metadata/fields`
 //                          (the metadata OpenAPI declares `servers.url =

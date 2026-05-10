@@ -6,6 +6,319 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-09
+
+### Added — Surface 3: Field configuration (5 tools)
+
+PR4 layers ergonomic wrappers on `updateOneField` so the agent can
+manipulate field-level settings atomically without crafting the full
+`UpdateFieldInput` payload:
+
+- `twenty_metadata_field_options_set` — replace SELECT / MULTI_SELECT
+  options atomically (full set; missing entries removed). Each option
+  carries label / value / color / position / isDefault.
+- `twenty_metadata_field_settings_set` — replace the type-specific
+  `settings` JSON. Examples:
+  - CURRENCY → `{ currencyCode: "EUR", decimals: 2 }`
+  - RATING → `{ maxValue: 5 }`
+  - NUMBER → `{ format: "percentage", decimals: 0 }`
+  - RICH_TEXT → `{ toolbar: ['bold','italic',...] }`
+  - RELATION → `{ onDelete: "CASCADE" | "SET_NULL" | "RESTRICT" }`
+- `twenty_metadata_field_default_set` — set or clear the field's
+  `defaultValue` JSON.
+- `twenty_metadata_field_constraints_set` — toggle isNullable /
+  isUnique / isUIReadOnly / isActive.
+- `twenty_metadata_field_relation_settings_set` — convenience tool
+  for RELATION-specific settings (onDelete + optional inverseLabel).
+
+Every Surface 3 tool is approval-gated by default (field metadata
+mutations affect every record of the parent object).
+
+### Added — Surface 5: Roles & Permissions (13 tools)
+
+PR5 opens up Twenty's RBAC graph. Roles, principal assignments, and
+the four upsert mutations (object permissions, field permissions,
+permission flags, row-level predicates) are now reachable from the
+agent — without leaving the safety net of approval gates.
+
+Tools:
+
+- **Role catalogue (5)**: `twenty_roles_list`, `twenty_role_get`
+  (joined permissions), `twenty_role_create`, `twenty_role_update`,
+  `twenty_role_delete`.
+- **Assignments (4)**: `twenty_role_assign_workspace_member`
+  (human user), `twenty_role_assign_agent` (LLM principal),
+  `twenty_role_revoke_agent`, `twenty_role_assign_api_key`.
+- **Permission upserts (4)**: `twenty_role_object_permissions_upsert`
+  (per-object canRead / canUpdate / canSoftDelete / canDestroy),
+  `twenty_role_field_permissions_upsert` (per-field canRead /
+  canUpdateFieldValue), `twenty_role_permission_flags_upsert`
+  (replace the 25-flag set: `ROLES`, `DATA_MODEL`, `SECURITY`,
+  `WORKFLOWS`, `VIEWS`, `LAYOUTS`, `BILLING`, `AI_SETTINGS`, `AI`,
+  ...), `twenty_role_row_level_predicates_upsert` (conditional
+  AND/OR predicate trees scoped to a role + object pair).
+
+Every write tool is **approval-gated CRITICAL** — wrong permissions
+have workspace-wide blast radius.
+
+### Added — Surface 6: Workspace settings (2 tools)
+
+PR6 exposes the `currentWorkspace` read + the powerful
+`runWorkspaceMigration` mutation:
+
+- `twenty_workspace_get` — read settings (subdomain, displayName,
+  auth providers, 2FA enforcement, retention windows, **AI settings**:
+  fastModel, smartModel, aiAdditionalInstructions, enabledAiModelIds,
+  useRecommendedModels). Distinct from `twenty_workspace_info` which
+  lists metadata objects.
+- `twenty_workspace_run_migration` — apply a `WorkspaceMigrationInput`
+  atomically (CREATE_OBJECT / ALTER_OBJECT / DELETE_OBJECT /
+  CREATE_FIELD / ... in a single transaction). **Approval-gated
+  CRITICAL** — irreversible at the schema level.
+
+`twenty_workspace_update` was scoped OUT of v0.8.0 after live testing
+on Twenty 2.1 returned `FORBIDDEN — This endpoint requires a user
+context. API keys are not supported.` Operators must edit workspace
+settings through the Twenty UI; the tool will be reintroduced when /
+if Twenty exposes a user-impersonation flow for API keys (or when
+Twenty's policy on this endpoint changes).
+
+`twenty_workspace_logo_upload` was also scoped out (multipart file
+upload requires binary context the LLM does not have a path to;
+operators upload via the UI).
+
+### Approvals summary
+
+`DEFAULT_APPROVAL_REQUIRED` grows from 35 (alpha.3) to **52 entries**
+in v0.8.0:
+- +5 Surface 3 (every field-config wrapper)
+- +11 Surface 5 (every role write — create/update/delete + 4
+  assignments + 4 upserts)
+- +1 Surface 6 (run_migration; updateWorkspace was scoped out)
+
+### Tool count summary
+
+| Layer | Count |
+|---|---|
+| v0.7.4 carry-over | 86 (minus 12 dashboard tools removed in PR3) = **74** |
+| Surface 1 — Views | 32 |
+| Surface 2 — Page Layouts | 17 |
+| Surface 3 — Field config | 5 |
+| Surface 4 — List columns | 5 |
+| Surface 5 — Roles + Permissions | 13 |
+| Surface 6 — Workspace settings | 2 |
+| **Total v0.8.0** | **148 tools** |
+
+### Notes
+
+- All Twenty 2.1 GraphQL input types referenced by Surfaces 3 / 5 / 6
+  (`UpdateFieldInput`, `CreateRoleInput`, `UpsertObjectPermissionsInput`,
+  `UpsertFieldPermissionsInput`, `UpsertPermissionFlagsInput`,
+  `UpsertRowLevelPermissionPredicatesInput`, `UpdateWorkspaceInput`,
+  `WorkspaceMigrationInput`) were introspected via `__type(name:...)`
+  before mutation — every shape used by the plugin matches the schema
+  as of 2026-05-09.
+- v0.8.0 is the FINAL release of the v0.8.x line. Subsequent minor
+  releases will refine surfaces / chase Twenty's schema drift /
+  introduce additional ergonomic tools (e.g. `twenty_view_field_groups_*`
+  helpers, automatic position renumbering on tab destroy, ...).
+
+## [0.8.0-alpha.3] - 2026-05-09
+
+### BREAKING — Removed every `twenty_dashboard_*` tool (replaced by generic `twenty_page_layout_*`)
+
+PR3 unifies Twenty's PageLayout surface into a single generic vocabulary
+that covers every layout type — `DASHBOARD`, `RECORD_PAGE` (record
+detail), `RECORD_INDEX` (object index), `STANDALONE_PAGE`. The 12
+v0.7.x dashboard-specific tools are **DELETED outright**, no
+deprecation alias kept (per the v0.8.0 design directive: zero dead
+code).
+
+Removed tools (operators must rename in their workflows / SKILL.md):
+
+| v0.7.x | v0.8.0-alpha.3 |
+|---|---|
+| `twenty_dashboards_list` | `twenty_page_layouts_list` (filter by `pageLayoutType: "DASHBOARD"`) |
+| `twenty_dashboard_get` | `twenty_page_layout_get` (returns the `dashboards` workspace record alongside the layout when applicable) |
+| `twenty_dashboard_create_complete` | `twenty_page_layout_create_complete` (`type: "DASHBOARD"` orchestrates the workspace record automatically) |
+| `twenty_dashboard_duplicate` | `twenty_page_layout_duplicate` (DASHBOARD path delegates to Twenty's native `duplicateDashboard`; non-DASHBOARD paths replay create+tabs+widgets) |
+| `twenty_dashboard_delete` | `twenty_page_layout_destroy` (also soft-deletes the matching `/rest/dashboards` record for DASHBOARD layouts) |
+| `twenty_dashboard_replace_layout` | `twenty_page_layout_replace_with_tabs` |
+| `twenty_dashboard_tab_add/_update/_delete` | `twenty_page_layout_tab_add/_update/_destroy` |
+| `twenty_dashboard_widget_add/_update/_delete/_data` | `twenty_page_layout_widget_add/_update/_destroy/_data` |
+
+The renames + DASHBOARD record orchestration work transparently for
+DASHBOARD layouts — the agent does not have to manage the
+`/rest/dashboards` workspace record itself.
+
+### Added — Surface 2: Page Layouts (17 tools)
+
+Beyond the rename, PR3 extends the surface with capabilities the v0.7.x
+dashboard-only tools could not address:
+
+- **Every PageLayoutType is reachable** — RECORD_PAGE (record detail
+  layouts that the agent could not configure before), RECORD_INDEX
+  (object index page customisation), STANDALONE_PAGE (workspace pages
+  not bound to an object). Direct fix for the missing-Mission-layout
+  bug logged on 2026-05-09.
+- **`twenty_page_layout_reset_to_default`** + tab/widget reset — wraps
+  Twenty's `resetPageLayoutToDefault` family, useful when an
+  experiment leaves a layout in a broken state.
+- **8 top-level + 4 tab + 5 widget tools = 17 total**:
+
+| Tool family | Tools |
+|---|---|
+| Layout (8) | list, get, create, update, destroy, reset_to_default, duplicate, replace_with_tabs, create_complete |
+| Tab (4) | add, update, destroy, reset_to_default |
+| Widget (5) | add, update, destroy, reset_to_default, data |
+
+`DEFAULT_APPROVAL_REQUIRED` grows by **3 entries** net: removes 4 v0.7.x
+dashboard gates, adds 7 page-layout gates (every `*_destroy` +
+`*_reset_to_default` + `replace_with_tabs`). Total: **35 gated tools**.
+
+### Notes
+
+- `widget-config-fragment.ts` and `widget-schemas.ts` are kept as-is
+  (shared GraphQL fragment + TypeBox schema for widget grid positions
+  and widget types).
+- The deleted `test/tools/dashboards.test.ts` was rewritten as
+  `test/tools/page-layouts.test.ts` covering the catalogue, the
+  DASHBOARD-create cascade with `/rest/dashboards` orchestration, and
+  the widget-data dispatcher.
+- Operators upgrading from 0.7.x must regenerate their `SKILL.md`
+  references (the cmux skills-snapshot pipeline picks up the new
+  tool names automatically; no manual sync needed beyond the
+  pipeline's 30-min cadence).
+
+## [0.8.0-alpha.2] - 2026-05-09
+
+### Added — Surface 4: List columns (5 tools)
+
+PR2 layers ergonomic wrappers on top of the Surface 1 ViewField
+primitives so the agent can reason in column / list vocabulary instead
+of descending to ViewField mutations:
+
+- `twenty_list_columns_get` — return the ordered list of columns of a
+  TABLE view, with each column's name / label / type / visibility /
+  position / size joined from FieldMetadata. Auto-resolves the default
+  INDEX TABLE view when called with `objectMetadataId` only.
+- `twenty_list_columns_set_order` — reorder columns by supplying field
+  metadata UUIDs in the desired order. Issues one updateViewField per
+  matching ViewField with positions 0, 1, 2, .... Skips unknown UUIDs
+  (reported back).
+- `twenty_list_columns_set_visibility` — bulk toggle (fieldMetadataId
+  + isVisible) keyed by field, not by ViewField id.
+- `twenty_list_column_set_size` — pixel width of a single column;
+  `0` means "use Twenty's default for this field type".
+- `twenty_list_columns_reset_default` — overwrite size + visibility +
+  position on every column of a view (sets isVisible=true, size=0,
+  renumbers positions). ViewFields are NOT destroyed and field
+  metadata is untouched. **Approval-gated** (overwrites layout in one
+  shot).
+
+All five tools accept either an explicit `viewId` (must be `type =
+TABLE`) or an `objectMetadataId` to auto-resolve the default INDEX
+TABLE view. Mixing them is fine; passing neither errors out.
+
+`DEFAULT_APPROVAL_REQUIRED` grows by one entry
+(`twenty_list_columns_reset_default`) → 32 gated tools total.
+
+### Notes
+
+- Surface 4 explicitly does NOT cover record-detail layouts (those go
+  through Surface 2 / PageLayout, shipped in `v0.8.0-alpha.3`) nor
+  KANBAN cards / CALENDAR positioning (Surface 1 handles those via
+  ViewGroup + ViewSort directly).
+
+## [0.8.0-alpha.1] - 2026-05-09
+
+### Added — Surface 1: Views (32 tools)
+
+PR1 of the v0.8.0 plugin extension opens up Twenty's `View` /
+`ViewField` / `ViewFieldGroup` / `ViewFilter` / `ViewFilterGroup` /
+`ViewSort` / `ViewGroup` graph to OpenClaw agents. The agent can now
+build, modify, and inspect saved layouts on any object — list, kanban,
+calendar, and embedded widget views — without going through the Twenty
+UI.
+
+Every entity exposes both **soft delete** (`*_delete`, reversible —
+sets `deletedAt`, restorable through Twenty's UI trash) and **hard
+delete** (`*_destroy`, irreversible). Hard destroys are approval-gated
+by default; soft deletes are not.
+
+New tools (all backed by Twenty's `/metadata` GraphQL endpoint):
+
+- **View top-level (7)**: `twenty_views_list`, `twenty_view_get`
+  (joins fields/filters/sorts/groups in one call), `twenty_view_create`,
+  `twenty_view_update`, `twenty_view_delete` (soft),
+  `twenty_view_destroy` (hard, gated), `twenty_view_duplicate` (clones
+  the view + optionally its children).
+- **ViewField (5)**: `twenty_view_field_add`, `_update`, `_delete`
+  (soft), `_destroy` (hard, gated), `twenty_view_fields_reorder`
+  (helper that assigns sequential positions from a UUID array).
+- **ViewFieldGroup (4)**: `_add`, `_update`, `_delete` (soft),
+  `_destroy` (hard, gated) — visual blocks on record-detail views.
+- **ViewFilter (4)**: `_add`, `_update`, `_delete` (soft), `_destroy`
+  (hard, gated) — supports all 16 Twenty 2.1 operands.
+- **ViewFilterGroup (4)**: `_add`, `_update`, `_delete` (soft),
+  `_destroy` (hard, gated) — logical AND/OR groupings; nestable.
+- **ViewSort (4)**: `_add`, `_update`, `_delete` (soft), `_destroy`
+  (hard, gated).
+- **ViewGroup (4)**: `_add`, `_update`, `_delete` (soft), `_destroy`
+  (hard, gated) — kanban columns.
+
+Seven new approval-gated tools added to `DEFAULT_APPROVAL_REQUIRED`
+(every `*_destroy` mutation): `twenty_view_destroy`,
+`twenty_view_field_destroy`, `twenty_view_field_group_destroy`,
+`twenty_view_filter_destroy`, `twenty_view_filter_group_destroy`,
+`twenty_view_sort_destroy`, `twenty_view_group_destroy`.
+
+### BREAKING — `serverUrl` is now required
+
+The plugin no longer ships a `DEFAULT_SERVER_URL`. Operators MUST set
+`plugins.entries.twenty-openclaw.config.serverUrl` to their Twenty
+instance URL (e.g. `https://crm.example.com`). `resolveConfig()` throws
+when `serverUrl` resolves to an empty string after env substitution —
+this surfaces as a plugin registration error rather than silently
+falling back to a hostname that cannot exist in the operator's network.
+
+Migration path:
+- Add `"serverUrl": "https://your-twenty-instance.example.com"` (or a
+  `${TWENTY_SERVER_URL}` substitution) to your plugin config before
+  upgrading.
+- The manifest's `configSchema` now lists `serverUrl` in `required`.
+
+### Changed — agnostic codebase
+
+Removed every reference to specific deployment domains from the source
+code so the plugin is environment-neutral:
+- `src/config.ts` — `DEFAULT_SERVER_URL` constant removed.
+- `openclaw.plugin.json` — `default` removed from `serverUrl` property.
+- `src/tools/metadata.ts`, `src/tools/dashboard-widgets.ts` — comments
+  rewritten to reference "a Twenty 2.1 instance" generically.
+- `README.md` — examples use `https://crm.example.com`.
+- `test/config.test.ts` — uses `https://crm.test.local` for the mock.
+
+`CHANGELOG.md` historical entries are preserved verbatim (they are
+dated records, not configuration).
+
+### Notes
+
+- 54/54 existing tests still pass after the refactor (4 of the
+  pre-existing test files needed minor adjustments for the new
+  `serverUrl` requirement); 6 new tests added in
+  `test/tools/views.test.ts` validate the catalogue + GraphQL request
+  shapes for the new tools. Total: 60/60 ✓.
+- All Twenty 2.1 GraphQL input types (`UpdateView*Input`,
+  `DeleteView*Input`, `DestroyView*Input`) were introspected via
+  `__type(name: ...)` queries before writing the mutations — every
+  shape used by the plugin matches the schema as of 2026-05-09.
+- This is `v0.8.0-alpha.1`, a pre-release for local testing. PR1
+  ships **only Surface 1**. The full v0.8.0 release tags when Surfaces
+  2 (Page Layouts), 3 (Field config), 4 (List columns), 5 (Roles +
+  Permissions), and 6 (Workspace settings) are merged in subsequent
+  PRs (`v0.8.0-alpha.2`, `-alpha.3`, ..., final `v0.8.0`).
+
 ## [0.7.4] - 2026-05-03
 
 ### Changed — compat aligned to 2026.5.0

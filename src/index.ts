@@ -27,9 +27,6 @@ import { createApprovalHook } from "./hooks/approval.js";
 import { buildActivitiesTools } from "./tools/activities.js";
 import { buildBulkTools } from "./tools/bulk.js";
 import { buildCompaniesTools } from "./tools/companies.js";
-import { buildDashboardTools } from "./tools/dashboards.js";
-import { buildDashboardTabTools } from "./tools/dashboard-tabs.js";
-import { buildDashboardWidgetTools } from "./tools/dashboard-widgets.js";
 import { buildDedupTools } from "./tools/dedup.js";
 import { buildExportTools } from "./tools/export.js";
 import { buildLogicFunctionTools } from "./tools/logic-functions.js";
@@ -45,6 +42,11 @@ import { buildWorkflowRunTools } from "./tools/workflow-runs.js";
 import { buildWorkflowStepTools } from "./tools/workflow-steps.js";
 import { buildWorkflowVersionTools } from "./tools/workflow-versions.js";
 import { buildWorkspaceTools } from "./tools/workspace.js";
+import { buildViewsTools } from "./tools/views.js";
+import { buildListColumnsTools } from "./tools/list-columns.js";
+import { buildPageLayoutsTools } from "./tools/page-layouts.js";
+import { buildFieldConfigTools } from "./tools/field-config.js";
+import { buildRolesTools } from "./tools/roles.js";
 import { TwentyClient } from "./twenty-client.js";
 import type { TwentyPluginConfig } from "./types.js";
 
@@ -162,14 +164,45 @@ export function registerTwentyPlugin(api: OpenClawPluginApi): void {
     ...buildSummarizeTools(client),
     ...buildMetadataTools(client),
     ...buildRecordTools(client),
-    ...buildDashboardTools(client),
-    ...buildDashboardTabTools(client),
-    ...buildDashboardWidgetTools(client),
     ...buildWorkflowTools(client),
     ...buildWorkflowVersionTools(client),
     ...buildWorkflowStepTools(client),
     ...buildWorkflowRunTools(client),
     ...buildLogicFunctionTools(client),
+    // v0.8.0 PR1 — Surface 1 Views: 32 tools covering View, ViewField,
+    // ViewFieldGroup, ViewFilter, ViewFilterGroup, ViewSort, ViewGroup.
+    // Backed by Twenty's `/metadata` GraphQL endpoint. Every hard-destroy
+    // (`*_destroy`) variant is approval-gated by default; soft `*_delete`
+    // are not (reversible).
+    ...buildViewsTools(client),
+    // v0.8.0 PR2 — Surface 4 List columns: 5 ergonomic wrappers on top
+    // of the Surface 1 ViewField primitives. Lets the agent reason in
+    // column / list vocabulary (set order, set visibility, set size,
+    // reset defaults) without descending to ViewField mutations.
+    ...buildListColumnsTools(client),
+    // v0.8.0 PR3 — Surface 2 Page Layouts: 17 tools spanning every
+    // PageLayoutType (RECORD_INDEX / RECORD_PAGE / DASHBOARD /
+    // STANDALONE_PAGE) plus tabs and widgets. REPLACES the v0.7.x
+    // dashboard-specific tools (`twenty_dashboard_*`,
+    // `twenty_dashboard_tab_*`, `twenty_dashboard_widget_*`) with a
+    // single generic vocabulary. DASHBOARD's coupling to the
+    // `/rest/dashboards` workspace record is handled transparently by
+    // create / destroy / duplicate. Hard destroys + replace_with_tabs +
+    // reset_to_default are approval-gated.
+    ...buildPageLayoutsTools(client),
+    // v0.8.0 PR4 — Surface 3 Field config: 5 ergonomic wrappers on
+    // `updateOneField` to manipulate options (SELECT/MULTI_SELECT),
+    // type-specific settings (CURRENCY/RATING/NUMBER/RICH_TEXT/RELATION),
+    // defaultValue, boolean constraints (isNullable/isUnique/...) and
+    // RELATION onDelete behavior.
+    ...buildFieldConfigTools(client),
+    // v0.8.0 PR5 — Surface 5 Roles & Permissions: 13 tools covering
+    // Role CRUD, principal assignments (workspaceMember / agent / api
+    // key), and the four upsert mutations for object permissions, field
+    // permissions, permission flags, and row-level predicates. Every
+    // write is approval-gated CRITICAL — wrong permissions can lock
+    // operators out or expose PII.
+    ...buildRolesTools(client),
   ];
 
   for (const tool of allTools) {
