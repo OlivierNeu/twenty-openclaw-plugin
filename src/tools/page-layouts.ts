@@ -90,6 +90,36 @@ const PAGE_LAYOUT_WIDGET_POSITION_FRAGMENT = `
   }
 `;
 
+// Twenty 2.1 quirk: `CreatePageLayoutWidgetInput.gridPosition` is
+// required but Twenty doesn't immediately serialize it into the
+// `position` UNION returned by `getPageLayoutWidget` — the union stays
+// `null` until the UI's first render normalises it via autosave.
+// Empirical workaround (validated 2026-05-10): pass the optional
+// `position` JSON input alongside `gridPosition` with the same values
+// + `layoutMode: "GRID"`. The plugin auto-derives `position` from
+// `gridPosition` on every widget-creation path so the agent never has
+// to remember this. Tracked as v0.8.3 fix.
+function gridPositionToPositionInput(grid: {
+  row: number;
+  column: number;
+  rowSpan: number;
+  columnSpan: number;
+}): {
+  layoutMode: string;
+  row: number;
+  column: number;
+  rowSpan: number;
+  columnSpan: number;
+} {
+  return {
+    layoutMode: "GRID",
+    row: grid.row,
+    column: grid.column,
+    rowSpan: grid.rowSpan,
+    columnSpan: grid.columnSpan,
+  };
+}
+
 const PAGE_LAYOUT_WIDGET_FRAGMENT = `
   id pageLayoutTabId title type objectMetadataId
   conditionalDisplay conditionalAvailabilityExpression
@@ -319,6 +349,20 @@ const WidgetAddSchema = Type.Object({
   title: Type.String(),
   type: WidgetTypeSchema,
   gridPosition: GridPositionSchema,
+  position: Type.Optional(
+    Type.Any({
+      description:
+        "Optional UNION variant override for the widget's `position` " +
+        "field. When omitted on a GRID-tab widget, the plugin derives " +
+        "`{ layoutMode: 'GRID', row, column, rowSpan, columnSpan }` " +
+        "from `gridPosition` automatically (workaround for Twenty 2.1 " +
+        "lazy serialisation, cf v0.8.3). REQUIRED when the parent tab " +
+        "is `VERTICAL_LIST` (pass `{ layoutMode: 'VERTICAL_LIST', " +
+        "index: <0-based ordinal> }`) or `CANVAS` (pass " +
+        "`{ layoutMode: 'CANVAS' }`) — the plugin does NOT auto-derive " +
+        "for non-GRID tabs to avoid forcing a wrong variant.",
+    }),
+  ),
   objectMetadataId: Type.Optional(
     Type.String({
       description:
@@ -336,6 +380,16 @@ const WidgetUpdateSchema = Type.Object({
   title: Type.Optional(Type.String()),
   type: Type.Optional(WidgetTypeSchema),
   gridPosition: Type.Optional(GridPositionSchema),
+  position: Type.Optional(
+    Type.Any({
+      description:
+        "Optional UNION variant override for the widget's `position` " +
+        "field. When omitted AND `gridPosition` is in the update " +
+        "payload, the plugin derives the GRID variant automatically. " +
+        "Pass explicitly when targeting a non-GRID tab " +
+        "(VERTICAL_LIST / CANVAS).",
+    }),
+  ),
   objectMetadataId: Type.Optional(Type.String()),
   configuration: Type.Optional(Type.Any()),
   conditionalAvailabilityExpression: Type.Optional(Type.String()),
@@ -850,6 +904,10 @@ export function buildPageLayoutsTools(client: TwentyClient) {
                   rowSpan: srcPos.rowSpan ?? 1,
                   columnSpan: srcPos.columnSpan ?? 12,
                 };
+                // v0.8.3: forward `position` JSON so the union is
+                // populated immediately (same lazy-normalisation
+                // workaround as the regular widget_add path).
+                positionJson = gridPositionToPositionInput(gridPosition);
               } else {
                 gridPosition = { row: 0, column: 0, rowSpan: 1, columnSpan: 12 };
                 if (srcPos) positionJson = srcPos;
@@ -999,25 +1057,38 @@ export function buildPageLayoutsTools(client: TwentyClient) {
           );
           const tabId = tabData.createPageLayoutTab.id;
 
-          // 4. Widgets.
+          // 4. Widgets. v0.8.3: forward `position` derived from
+          // gridPosition for stable union serialisation, but ONLY when
+          // the first tab is in GRID layoutMode. For VERTICAL_LIST or
+          // CANVAS first tabs the agent must pass each widget's
+          // `position` explicitly via the lower-level tools after the
+          // cascade — auto-deriving a GRID variant would mismatch the
+          // tab and produce a broken layout (cf Codex review v0.8.3).
+          const isGridTab =
+            params.firstTabLayoutMode === undefined ||
+            params.firstTabLayoutMode === "GRID";
           const widgetIds: string[] = [];
           for (const widget of params.widgets ?? []) {
+            const widgetInput: Record<string, unknown> = {
+              pageLayoutTabId: tabId,
+              title: widget.title,
+              type: widget.type,
+              gridPosition: widget.gridPosition,
+              objectMetadataId: widget.objectMetadataId ?? null,
+              configuration: widget.configuration,
+            };
+            if (isGridTab) {
+              widgetInput.position = gridPositionToPositionInput(
+                widget.gridPosition,
+              );
+            }
             const widgetData = await c.postGraphQL<{
               createPageLayoutWidget: { id: string };
             }>(
               `mutation CreateWidget($input: CreatePageLayoutWidgetInput!) {
                 createPageLayoutWidget(input: $input) { id }
               }`,
-              {
-                input: {
-                  pageLayoutTabId: tabId,
-                  title: widget.title,
-                  type: widget.type,
-                  gridPosition: widget.gridPosition,
-                  objectMetadataId: widget.objectMetadataId ?? null,
-                  configuration: widget.configuration,
-                },
-              },
+              { input: widgetInput },
               { signal },
             );
             widgetIds.push(widgetData.createPageLayoutWidget.id);
@@ -1241,6 +1312,19 @@ export function buildPageLayoutsTools(client: TwentyClient) {
                 title: params.title,
                 type: params.type,
                 gridPosition: params.gridPosition,
+                // v0.8.3: also forward `position` (JSON optional) so the
+                // UNION returned by getPageLayoutWidget is populated
+                // immediately. Prefer the explicit `position` from
+                // params when supplied (e.g. for VERTICAL_LIST / CANVAS
+                // tabs where a forced GRID variant would mismatch).
+                // Otherwise derive a GRID variant from gridPosition —
+                // safe assumption for DASHBOARD tabs (the dominant
+                // use-case of this tool); for non-GRID tabs the agent
+                // MUST pass `position` explicitly. See
+                // gridPositionToPositionInput comment.
+                position:
+                  params.position ??
+                  gridPositionToPositionInput(params.gridPosition),
                 objectMetadataId: params.objectMetadataId ?? null,
                 configuration: params.configuration,
               },
@@ -1259,11 +1343,34 @@ export function buildPageLayoutsTools(client: TwentyClient) {
         description:
           "Patch a widget (title, type, gridPosition, objectMetadataId, " +
           "configuration, conditionalAvailabilityExpression). Only fields " +
-          "you supply are modified.",
+          "you supply are modified. When `gridPosition` is supplied, the " +
+          "plugin automatically derives the matching `position` (UNION " +
+          "GRID variant) and forwards both to Twenty so the widget's " +
+          "serialised position is updated immediately (workaround for " +
+          "Twenty 2.1 lazy union normalisation).",
         mutates: true,
         parameters: WidgetUpdateSchema,
         run: async (params, c, signal) => {
           const { widgetId, ...updates } = params;
+          // v0.8.3: when gridPosition is supplied AND `position` is not
+          // explicitly set, derive the GRID-variant position so Twenty's
+          // UNION serialises immediately. If the agent passes `position`
+          // explicitly (typical for VERTICAL_LIST / CANVAS tabs), we
+          // honour it instead — the explicit variant wins.
+          const inputWithPosition: Record<string, unknown> = { ...updates };
+          if (
+            inputWithPosition.position === undefined &&
+            updates.gridPosition
+          ) {
+            inputWithPosition.position = gridPositionToPositionInput(
+              updates.gridPosition as {
+                row: number;
+                column: number;
+                rowSpan: number;
+                columnSpan: number;
+              },
+            );
+          }
           const data = await c.postGraphQL<{
             updatePageLayoutWidget: PageLayoutWidgetResp;
           }>(
@@ -1274,7 +1381,7 @@ export function buildPageLayoutsTools(client: TwentyClient) {
                 ${PAGE_LAYOUT_WIDGET_FRAGMENT}
               }
             }`,
-            { id: widgetId, input: updates },
+            { id: widgetId, input: inputWithPosition },
             { signal },
           );
           return data.updatePageLayoutWidget;

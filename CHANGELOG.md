@@ -6,6 +6,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-05-10
+
+### Refined — l'auto-dérivation de `position` ne force plus le variant GRID sur les tabs non-GRID (Codex review)
+
+Itération suite au feedback Codex : la dérivation initiale de
+`position: { layoutMode: "GRID", ... }` était inconditionnelle, ce qui
+aurait posé problème sur `twenty_page_layout_create_complete` appelé
+avec `firstTabLayoutMode: "VERTICAL_LIST"` ou `"CANVAS"` — Twenty
+aurait reçu un variant UNION incohérent avec le layoutMode du tab.
+
+### Changed (suite Codex)
+
+- `WidgetAddSchema` et `WidgetUpdateSchema` exposent désormais
+  `position` (Optional, JSON Any) — l'agent peut donc fournir
+  explicitement le bon variant union pour les tabs non-GRID
+  (VERTICAL_LIST → `{ layoutMode: "VERTICAL_LIST", index }`,
+  CANVAS → `{ layoutMode: "CANVAS" }`).
+- `twenty_page_layout_widget_add` : préfère `params.position` quand
+  fourni (no override), dérive un variant GRID depuis `gridPosition`
+  uniquement quand `position` est absent. Convention "GRID par défaut"
+  alignée sur l'usage dominant (DASHBOARD layouts).
+- `twenty_page_layout_widget_update` : idem — dérive le variant GRID
+  uniquement si `position` n'est pas dans le payload ET `gridPosition`
+  est mis à jour.
+- `twenty_page_layout_create_complete` cascade : ne dérive `position`
+  que si `firstTabLayoutMode === "GRID"` (ou undefined par défaut).
+  Pour les cascades VerticalList/Canvas l'agent doit ajouter ses
+  positions via `_widget_update` avec `position` explicite après le
+  cascade.
+
+### Fixed — `twenty_page_layout_widget_add/_update` ne forwardait pas `position`, laissant le UNION non sérialisé
+
+Découvert le 2026-05-10 lors du dashboard build : Twenty 2.1 stocke
+correctement `gridPosition` à la création d'un widget, mais ne
+sérialise pas immédiatement le UNION `position` (PageLayoutWidgetPosition)
+dans le retour GraphQL — le union reste `null` jusqu'au premier rendu
+UI qui déclenche une normalisation par autosave. Conséquence :
+`twenty_page_layout_get` retournait `position: null` sur tous les
+widgets fraîchement créés via API tant que personne n'ouvrait l'UI
+Twenty, ce qui cassait les inspections automatiques de l'agent.
+
+Workaround empirique validé : `CreatePageLayoutWidgetInput` accepte
+un champ `position` JSON optional EN PLUS de `gridPosition`
+(REQUIRED). Quand les deux sont passés avec les mêmes valeurs +
+`layoutMode: "GRID"`, le UNION est populé immédiatement.
+
+### Changed
+
+- `src/tools/page-layouts.ts` : nouveau helper
+  `gridPositionToPositionInput(grid)` qui dérive le payload
+  `position: { layoutMode: "GRID", row, column, rowSpan, columnSpan }`
+  depuis le `gridPosition`.
+- `twenty_page_layout_widget_add` : forwarde désormais automatiquement
+  `position` calculé depuis `gridPosition` à `createPageLayoutWidget`.
+  Zéro effort agent — le SKILL.md (f-bis #6) qui demandait à l'agent
+  de le faire manuellement peut être nettoyé.
+- `twenty_page_layout_widget_update` : quand `gridPosition` est dans
+  le payload d'update, le plugin dérive et envoie aussi `position`.
+  Pas d'effort agent.
+- `twenty_page_layout_create_complete` (cascade widgets premier tab) :
+  même auto-génération.
+- `twenty_page_layout_duplicate` (cascade replay non-DASHBOARD,
+  branche GRID) : même auto-génération. La branche VerticalList /
+  Canvas continue de forwarder le union variant source via le champ
+  `position` JSON (déjà fait en v0.8.2 partiellement).
+
+### Notes
+
+- 74/74 tests passent. No tool name or signature change.
+  Pure auto-fix de la sérialisation côté plugin.
+- Le SKILL.md (f-bis #6) sera mis à jour pour refléter que ce
+  comportement est maintenant automatique côté plugin (pas besoin
+  pour l'agent de passer `position` manuellement).
+- Cascade `_replace_with_tabs` (updatePageLayoutWithTabsAndWidgets) :
+  pas modifiée car Twenty exécute cette mutation comme un upsert
+  bulk côté serveur — la normalisation devrait s'appliquer
+  automatiquement. À surveiller si bug similaire remonte.
+
 ## [0.8.2] - 2026-05-10
 
 ### Fixed — `twenty_page_layout_duplicate` cascade widgets utilisait l'alias `gridPosition: position` désormais invalide
