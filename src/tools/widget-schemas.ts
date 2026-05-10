@@ -61,22 +61,52 @@ export const AggregateOperationSchema = Type.Union(
   },
 );
 
-// Widget types — full enum, but the LLM-friendly subset is GRAPH /
-// RECORD_TABLE / IFRAME / STANDALONE_RICH_TEXT / VIEW (matches what
-// Twenty's own create_complete_dashboard tool exposes).
+// Widget types — full enum (19 values) sourced from Twenty 2.1's
+// `__type(name: "WidgetType")` introspection. The original v0.7.x
+// plugin only exposed 5 LLM-friendly types (GRAPH / RECORD_TABLE /
+// IFRAME / STANDALONE_RICH_TEXT / VIEW), but Twenty 2.1 supports
+// 14 additional native widgets (FIELDS / FIELD / FIELD_RICH_TEXT /
+// TIMELINE / TASKS / NOTES / FILES / EMAILS / CALENDAR / WORKFLOW /
+// WORKFLOW_VERSION / WORKFLOW_RUN / FRONT_COMPONENT / EMAIL_THREAD).
+// Adding them lets the agent inspect AND create native widgets that
+// Twenty auto-creates on RECORD_PAGE layouts (e.g. Note's bodyV2
+// widget = FIELD_RICH_TEXT). v0.8.2 added the missing 14.
 export const WidgetTypeSchema = Type.Union(
   [
+    // Pre-v0.8.2 (LLM-friendly chart/embed/table set)
     Type.Literal("GRAPH"),
     Type.Literal("RECORD_TABLE"),
     Type.Literal("IFRAME"),
     Type.Literal("STANDALONE_RICH_TEXT"),
     Type.Literal("VIEW"),
+    // Added in v0.8.2 — native record-page widgets
+    Type.Literal("FIELDS"),
+    Type.Literal("FIELD"),
+    Type.Literal("FIELD_RICH_TEXT"),
+    Type.Literal("TIMELINE"),
+    Type.Literal("TASKS"),
+    Type.Literal("NOTES"),
+    Type.Literal("FILES"),
+    Type.Literal("EMAILS"),
+    Type.Literal("CALENDAR"),
+    Type.Literal("WORKFLOW"),
+    Type.Literal("WORKFLOW_VERSION"),
+    Type.Literal("WORKFLOW_RUN"),
+    Type.Literal("FRONT_COMPONENT"),
+    Type.Literal("EMAIL_THREAD"),
   ],
   {
     description:
-      "Widget type. GRAPH (charts: KPI/bar/line/pie/gauge), RECORD_TABLE " +
-      "(table view of records), IFRAME (embedded URL), STANDALONE_RICH_TEXT " +
-      "(markdown notes), VIEW (existing Twenty view).",
+      "Widget type. Charts/embeds: GRAPH (KPI/bar/line/pie/gauge), " +
+      "RECORD_TABLE (table view), IFRAME (embedded URL), " +
+      "STANDALONE_RICH_TEXT (markdown notes), VIEW (existing Twenty view). " +
+      "Native RECORD_PAGE widgets: FIELDS (the multi-field section bound " +
+      "to a FIELDS_WIDGET view, see RECORD_PAGE pattern), FIELD (single " +
+      "field), FIELD_RICH_TEXT (RICH_TEXT field with multi-line rendering, " +
+      "matches Twenty's bodyV2 pattern on Note/Task), TIMELINE/TASKS/NOTES/" +
+      "FILES/EMAILS/CALENDAR (auto-rendered relation tabs), WORKFLOW / " +
+      "WORKFLOW_VERSION / WORKFLOW_RUN (workflow surfaces), FRONT_COMPONENT " +
+      "(workspace custom UI module), EMAIL_THREAD (single thread render).",
   },
 );
 

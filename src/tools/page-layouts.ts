@@ -73,10 +73,29 @@ const PAGE_LAYOUT_TAB_FRAGMENT = `
   isActive createdAt updatedAt deletedAt
 `;
 
+// Position is a UNION of three concrete types depending on the parent
+// tab's layoutMode (GRID / VERTICAL_LIST / CANVAS). GraphQL needs inline
+// fragments to query union members. Verified via __type(name:
+// "PageLayoutWidgetPosition") introspection on Twenty 2.1.
+const PAGE_LAYOUT_WIDGET_POSITION_FRAGMENT = `
+  __typename
+  ... on PageLayoutWidgetGridPosition {
+    layoutMode row column rowSpan columnSpan
+  }
+  ... on PageLayoutWidgetVerticalListPosition {
+    layoutMode index
+  }
+  ... on PageLayoutWidgetCanvasPosition {
+    layoutMode
+  }
+`;
+
 const PAGE_LAYOUT_WIDGET_FRAGMENT = `
   id pageLayoutTabId title type objectMetadataId
   conditionalDisplay conditionalAvailabilityExpression
   isActive createdAt updatedAt deletedAt
+  position { ${PAGE_LAYOUT_WIDGET_POSITION_FRAGMENT} }
+  configuration { ${WIDGET_CONFIGURATION_FRAGMENT} }
 `;
 
 interface PageLayoutResp {
@@ -749,23 +768,56 @@ export function buildPageLayoutsTools(client: TwentyClient) {
                   pageLayoutId: newLayoutId,
                   title: tab.title,
                   position: tab.position,
-                  icon: tab.icon ?? null,
+                  // `icon` not declared by CreatePageLayoutTabInput in
+                  // Twenty 2.1; set via updatePageLayoutTab below if the
+                  // source tab carried one.
                   layoutMode: tab.layoutMode ?? null,
                 },
               },
               { signal },
             );
             copiedTabs++;
+            if (tab.icon) {
+              await c.postGraphQL(
+                `mutation DupSetTabIcon($id: String!, $input: UpdatePageLayoutTabInput!) {
+                  updatePageLayoutTab(id: $id, input: $input) { id }
+                }`,
+                {
+                  id: newTab.createPageLayoutTab.id,
+                  input: { icon: tab.icon },
+                },
+                { signal },
+              );
+            }
 
+            // `position` is a GraphQL UNION (Grid / VerticalList /
+            // Canvas) since v0.8.2 — must select via inline fragments,
+            // not via a flat alias.
+            interface DupSrcPosition {
+              __typename?: string;
+              layoutMode?: string;
+              // Grid variant
+              row?: number;
+              column?: number;
+              rowSpan?: number;
+              columnSpan?: number;
+              // VerticalList variant
+              index?: number;
+            }
             const widgetData = await c.postGraphQL<{
-              getPageLayoutWidgets: Array<
-                PageLayoutWidgetResp & { configuration?: unknown }
-              >;
+              getPageLayoutWidgets: Array<{
+                id: string;
+                title: string;
+                type: string;
+                objectMetadataId: string | null;
+                position: DupSrcPosition | null;
+                configuration: unknown;
+              }>;
             }>(
               `query DupSrcWidgets($pageLayoutTabId: String!) {
                 getPageLayoutWidgets(pageLayoutTabId: $pageLayoutTabId) {
                   id title type objectMetadataId
-                  gridPosition: position
+                  position { ${PAGE_LAYOUT_WIDGET_POSITION_FRAGMENT} }
                   configuration { ${WIDGET_CONFIGURATION_FRAGMENT} }
                 }
               }`,
@@ -773,6 +825,35 @@ export function buildPageLayoutsTools(client: TwentyClient) {
               { signal },
             );
             for (const widget of widgetData?.getPageLayoutWidgets ?? []) {
+              // Reconstruct the `gridPosition` field (required by
+              // CreatePageLayoutWidgetInput). When the source widget was
+              // GRID-positioned, copy its dimensions verbatim; otherwise
+              // (VerticalList / Canvas) provide a placeholder full-row
+              // gridPosition AND forward the original union variant via
+              // the `position` JSON input field so Twenty preserves the
+              // VerticalList / Canvas semantics.
+              const srcPos = widget.position;
+              let gridPosition: {
+                row: number;
+                column: number;
+                rowSpan: number;
+                columnSpan: number;
+              };
+              let positionJson: unknown = null;
+              if (
+                srcPos?.__typename === "PageLayoutWidgetGridPosition" &&
+                srcPos.row !== undefined
+              ) {
+                gridPosition = {
+                  row: srcPos.row,
+                  column: srcPos.column ?? 0,
+                  rowSpan: srcPos.rowSpan ?? 1,
+                  columnSpan: srcPos.columnSpan ?? 12,
+                };
+              } else {
+                gridPosition = { row: 0, column: 0, rowSpan: 1, columnSpan: 12 };
+                if (srcPos) positionJson = srcPos;
+              }
               await c.postGraphQL(
                 `mutation DupCreateWidget($input: CreatePageLayoutWidgetInput!) {
                   createPageLayoutWidget(input: $input) { id }
@@ -782,12 +863,10 @@ export function buildPageLayoutsTools(client: TwentyClient) {
                     pageLayoutTabId: newTab.createPageLayoutTab.id,
                     title: widget.title,
                     type: widget.type,
-                    gridPosition: (
-                      widget as { gridPosition?: unknown }
-                    ).gridPosition,
+                    gridPosition,
+                    position: positionJson,
                     objectMetadataId: widget.objectMetadataId ?? null,
-                    configuration: (widget as { configuration?: unknown })
-                      .configuration,
+                    configuration: widget.configuration,
                   },
                 },
                 { signal },
@@ -965,7 +1044,12 @@ export function buildPageLayoutsTools(client: TwentyClient) {
         description:
           "Add a tab to an existing PageLayout. Auto-positions at the " +
           "end when `position` is omitted (counts current tabs). Use " +
-          "twenty_page_layout_widget_add to populate the new tab.",
+          "twenty_page_layout_widget_add to populate the new tab.\n\n" +
+          "Implementation note: Twenty 2.1's CreatePageLayoutTabInput " +
+          "does NOT accept `icon` (only UpdatePageLayoutTabInput does). " +
+          "When `icon` is supplied, the plugin therefore creates the tab " +
+          "without it, then issues an updatePageLayoutTab to set the " +
+          "icon — single tool call from the agent's perspective.",
         mutates: true,
         parameters: TabAddSchema,
         run: async (params, c, signal) => {
@@ -983,6 +1067,8 @@ export function buildPageLayoutsTools(client: TwentyClient) {
             position = (tabsResp?.getPageLayoutTabs ?? []).length;
           }
 
+          // Step 1 — create the tab without `icon` (Twenty 2.1
+          // CreatePageLayoutTabInput does not declare `icon`).
           const data = await c.postGraphQL<{
             createPageLayoutTab: PageLayoutTabResp;
           }>(
@@ -996,13 +1082,30 @@ export function buildPageLayoutsTools(client: TwentyClient) {
                 title: params.title,
                 pageLayoutId: params.pageLayoutId,
                 position,
-                icon: params.icon ?? null,
                 layoutMode: params.layoutMode ?? null,
               },
             },
             { signal },
           );
-          return data.createPageLayoutTab;
+          const created = data.createPageLayoutTab;
+
+          // Step 2 — if `icon` was supplied, set it via updatePageLayoutTab
+          // (UpdatePageLayoutTabInput supports icon).
+          if (params.icon !== undefined && params.icon !== null) {
+            const updated = await c.postGraphQL<{
+              updatePageLayoutTab: PageLayoutTabResp;
+            }>(
+              `mutation SetIcon($id: String!, $input: UpdatePageLayoutTabInput!) {
+                updatePageLayoutTab(id: $id, input: $input) {
+                  ${PAGE_LAYOUT_TAB_FRAGMENT}
+                }
+              }`,
+              { id: created.id, input: { icon: params.icon } },
+              { signal },
+            );
+            return updated.updatePageLayoutTab;
+          }
+          return created;
         },
       },
       client,

@@ -6,6 +6,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-05-10
+
+### Fixed — `twenty_page_layout_duplicate` cascade widgets utilisait l'alias `gridPosition: position` désormais invalide
+
+Repéré par Codex review sur le diff v0.8.2. Lorsque
+`PAGE_LAYOUT_WIDGET_FRAGMENT` a été enrichi pour exposer `position`
+comme UNION (Grid / VerticalList / Canvas), la query `DupSrcWidgets`
+de la cascade non-DASHBOARD a continué d'utiliser l'ancien alias plat
+`gridPosition: position` sans inline fragments — GraphQL aurait rejeté
+la query au runtime avec « Field "position" of type
+"PageLayoutWidgetPosition" must have a sub selection ».
+
+### Changed
+
+- `src/tools/page-layouts.ts — twenty_page_layout_duplicate` (cascade
+  manuelle non-DASHBOARD) : la query `DupSrcWidgets` utilise désormais
+  `position { ${PAGE_LAYOUT_WIDGET_POSITION_FRAGMENT} }`. La création
+  du widget dupliqué reconstruit `gridPosition` (REQUIRED par
+  CreatePageLayoutWidgetInput) depuis le variant Grid quand applicable,
+  ou un placeholder full-row + forward du variant union dans le champ
+  `position` JSON (optional) sinon — Twenty conserve les sémantiques
+  VerticalList / Canvas du layout source.
+
+### Fixed — `twenty_page_layout_tab_add` rejeté par Twenty 2.1 quand `icon` est fourni
+
+Découvert empiriquement le 2026-05-10 lors de la création d'un
+dashboard "Pilotage Ataraxis" via l'agent OpenClaw. Twenty 2.1
+distingue strictement `CreatePageLayoutTabInput` (4 champs : title /
+position / pageLayoutId / layoutMode — **PAS de icon**) et
+`UpdatePageLayoutTabInput` (4 champs : title / position / icon /
+layoutMode). L'icon ne peut être set qu'en `update`, pas en `create`.
+
+Le plugin v0.8.1 exposait `icon` dans `TabAddSchema` ET le passait
+dans `createPageLayoutTab`, ce qui faisait échouer la mutation avec
+`Field "icon" is not defined by type "CreatePageLayoutTabInput"`.
+
+### Changed
+
+- `src/tools/page-layouts.ts — twenty_page_layout_tab_add` :
+  séquencement transparent en 2 étapes — `createPageLayoutTab` sans
+  icon, puis `updatePageLayoutTab` pour set l'icon (uniquement quand
+  l'agent en fournit un). Du point de vue de l'agent, c'est toujours
+  un seul appel.
+- `src/tools/page-layouts.ts — twenty_page_layout_duplicate` (cascade
+  manuelle pour les non-DASHBOARD) : même séquencement appliqué.
+
+### Fixed — `WidgetTypeSchema` ne whitelist que 5 types alors que Twenty 2.1 en supporte 19
+
+Découvert empiriquement le 2026-05-10 lors d'une tentative de
+configuration de `Livrable.summary` (RICH_TEXT) avec un widget natif
+`FIELD_RICH_TEXT` (pattern Note.bodyV2 / Task.bodyV2). Le tool
+`twenty_page_layout_widget_add` rejetait le type côté TypeBox avant
+d'atteindre Twenty.
+
+### Changed
+
+- `src/tools/widget-schemas.ts` — `WidgetTypeSchema` étendu de 5 à
+  **19 valeurs** : pré-existantes (GRAPH / RECORD_TABLE / IFRAME /
+  STANDALONE_RICH_TEXT / VIEW) + 14 nouvelles natives Twenty 2.1
+  (`FIELDS`, `FIELD`, `FIELD_RICH_TEXT`, `TIMELINE`, `TASKS`, `NOTES`,
+  `FILES`, `EMAILS`, `CALENDAR`, `WORKFLOW`, `WORKFLOW_VERSION`,
+  `WORKFLOW_RUN`, `FRONT_COMPONENT`, `EMAIL_THREAD`). Source : Twenty
+  2.1 `__type(name: "WidgetType")` introspection.
+- `src/tools/page-layouts.ts` — `PAGE_LAYOUT_WIDGET_FRAGMENT` enrichi
+  pour exposer `position` et `configuration`. Position est un UNION
+  de 3 variants (`PageLayoutWidgetGridPosition` pour GRID,
+  `PageLayoutWidgetVerticalListPosition` pour VERTICAL_LIST,
+  `PageLayoutWidgetCanvasPosition` pour CANVAS). Le fragment utilise
+  des inline fragments GraphQL pour récupérer les fields spécifiques
+  à chaque variant. `configuration` réutilise le
+  `WIDGET_CONFIGURATION_FRAGMENT` existant qui couvrait déjà les 22
+  types de configuration (rien à ajouter là).
+
+### Notes
+
+- v0.8.2 ne change AUCUN tool name ni signature. Pas de breaking.
+  L'agent gagne juste la capacité de référencer + créer + lire les
+  14 widgets natifs Twenty (notamment `FIELD_RICH_TEXT` pour les
+  RICH_TEXT fields des fiches détail).
+- Les configurations natives sans payload utile (CalendarConfiguration,
+  EmailsConfiguration, NotesConfiguration, TasksConfiguration,
+  TimelineConfiguration, FilesConfiguration, EmailThreadConfiguration,
+  ViewConfiguration, WorkflowConfiguration, WorkflowRunConfiguration,
+  WorkflowVersionConfiguration, FieldRichTextConfiguration) ne
+  contiennent que `configurationType` — Twenty les configure par
+  convention côté UI (ex. `FIELD_RICH_TEXT` prend automatiquement le
+  premier RICH_TEXT field du model parent).
+
 ## [0.8.1] - 2026-05-09
 
 ### Fixed — `Type.Intersect` schemas rejected by OpenAI (regression in v0.8.0)
