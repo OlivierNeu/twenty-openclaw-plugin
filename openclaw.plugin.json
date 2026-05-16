@@ -2,7 +2,7 @@
   "id": "twenty-openclaw",
   "name": "Twenty",
   "description": "Twenty CRM plugin for OpenClaw — manage people / companies / opportunities / notes / tasks, model custom objects + fields via the Metadata API, build / modify / inspect dashboards (charts, tabs, widgets), and design / activate / run / report on workflows (triggers, steps, edges, runs, logic functions), all gated by workspace whitelist and approval prompts on destructive operations and workflow execution.",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "activation": {
     "onStartup": true
   },

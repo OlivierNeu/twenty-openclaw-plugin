@@ -6,6 +6,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-05-14
+
+### Changed — GAUGE_CHART rendu non-créable (Twenty 2.3 l'a supprimé)
+
+Twenty v2.3.0 (PR twentyhq/twenty#20172) a retiré le support des
+gauge charts et embarque une migration destructive
+`delete-gauge-widgets` qui supprime les widgets gauge existants des
+dashboards. v2.4.0 (#20393) durcit cette migration. Conséquence : un
+agent qui créerait un widget `GAUGE_CHART` via le plugin verrait son
+widget soit rejeté, soit silencieusement supprimé au prochain upgrade.
+
+- `widget-schemas.ts` : `GAUGE_CHART` retiré de `ConfigurationTypeSchema`
+  (le discriminateur de création). Commentaire ajouté pour interdire
+  sa réintroduction.
+- `widget-schemas.ts` : `GaugeChartConfigSchema` conservé mais marqué
+  DEPRECATED / READ-ONLY — sert uniquement à déserialiser d'éventuels
+  anciens widgets gauge en lecture (le type GraphQL
+  `GaugeChartConfiguration` reste présent dans l'union
+  `WidgetConfiguration` côté Twenty pour back-compat, vérifié
+  empiriquement contre v2.4 le 2026-05-14).
+- `widget-schemas.ts` : description `WidgetTypeSchema` — retrait de
+  "gauge" de la liste des charts GRAPH.
+- `page-layouts.ts` : `twenty_page_layout_widget_add` — bloc
+  d'instruction `GRAPH + GAUGE_CHART` remplacé par une note explicite
+  "non créable, utiliser AGGREGATE_CHART".
+- `page-layouts.ts` : descriptions `twenty_page_layout_widget_data`
+  reformulées en "legacy GAUGE_CHART" (la lecture reste supportée).
+- Le fragment GraphQL `... on GaugeChartConfiguration`
+  (`widget-config-fragment.ts`) est **inchangé** : conservé pour la
+  lecture rétro-compatible. Vérifié : `getPageLayout` avec ce fragment
+  passe sans erreur contre Twenty v2.4 (25 widgets lus).
+
+### Notes
+
+- Aucun changement de nom ni de signature de tool. Pure restriction
+  de la surface de création + clarification documentaire.
+- Compatibilité confirmée : plugin v0.8.x ⟷ Twenty v2.2 → v2.4
+  (smoke tests live 2026-05-14 : workspace, metadata objects, people,
+  companies, missions, views, roles, page layouts, widget config —
+  tous verts).
+
 ## [0.8.3] - 2026-05-10
 
 ### Refined — l'auto-dérivation de `position` ne force plus le variant GRID sur les tabs non-GRID (Codex review)

@@ -409,7 +409,7 @@ const WidgetDataSchema = Type.Object({
       "Widget UUID. The plugin fetches the widget config and dispatches " +
       "to the right chart-data resolver (barChartData / lineChartData / " +
       "pieChartData) for chart widgets, or returns a hint for KPI " +
-      "(AGGREGATE_CHART / GAUGE_CHART) configurations.",
+      "(AGGREGATE_CHART, or legacy GAUGE_CHART) configurations.",
   }),
 });
 
@@ -1287,8 +1287,9 @@ export function buildPageLayoutsTools(client: TwentyClient) {
           "use primaryAxisDateGranularity = DAY|WEEK|MONTH|...)\n\n" +
           "  GRAPH + PIE_CHART:\n" +
           "    + groupByFieldMetadataId (NOTE: different field name from BAR/LINE)\n\n" +
-          "  GRAPH + GAUGE_CHART:\n" +
-          "    + aggregateFieldMetadataId + aggregateOperation + rangeMin + rangeMax\n\n" +
+          "  (GAUGE_CHART is NOT creatable: removed in Twenty 2.3, a " +
+          "destructive migration deletes gauge widgets. Use AGGREGATE_CHART " +
+          "for a single-KPI display instead.)\n\n" +
           "  RECORD_TABLE: + configuration.viewId (must create a TABLE view first).\n" +
           "  IFRAME: + configuration.url.\n" +
           "  STANDALONE_RICH_TEXT: + configuration.body.markdown.\n\n" +
@@ -1446,7 +1447,7 @@ export function buildPageLayoutsTools(client: TwentyClient) {
           "Compute the data for a chart widget (BAR/LINE/PIE). The plugin " +
           "fetches the widget config and dispatches to the right Twenty " +
           "chart-data resolver (barChartData / lineChartData / pieChartData). " +
-          "For AGGREGATE_CHART / GAUGE_CHART (single KPI), returns a hint " +
+          "For AGGREGATE_CHART (or legacy GAUGE_CHART) single KPI, returns a hint " +
           "pointing to the standard record-aggregation API — Twenty does " +
           "not expose dedicated chart-data resolvers for those.",
         parameters: WidgetDataSchema,

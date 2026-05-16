@@ -97,7 +97,7 @@ export const WidgetTypeSchema = Type.Union(
   ],
   {
     description:
-      "Widget type. Charts/embeds: GRAPH (KPI/bar/line/pie/gauge), " +
+      "Widget type. Charts/embeds: GRAPH (KPI/bar/line/pie), " +
       "RECORD_TABLE (table view), IFRAME (embedded URL), " +
       "STANDALONE_RICH_TEXT (markdown notes), VIEW (existing Twenty view). " +
       "Native RECORD_PAGE widgets: FIELDS (the multi-field section bound " +
@@ -111,9 +111,14 @@ export const WidgetTypeSchema = Type.Union(
 );
 
 // Graph configuration discriminator — what kind of chart is this widget.
+// GAUGE_CHART is intentionally absent: Twenty 2.3 removed gauge support
+// and ships a destructive migration (`delete-gauge-widgets`) that wipes
+// existing gauge widgets. Creating one via the plugin would be rejected
+// or silently deleted on the next upgrade. The `GaugeChartConfigSchema`
+// + GraphQL fragment are kept READ-ONLY for back-compat (the union type
+// still exists in Twenty's GraphQL schema for legacy reads).
 export const ConfigurationTypeSchema = Type.Union([
   Type.Literal("AGGREGATE_CHART"),
-  Type.Literal("GAUGE_CHART"),
   Type.Literal("PIE_CHART"),
   Type.Literal("BAR_CHART"),
   Type.Literal("LINE_CHART"),
@@ -353,6 +358,12 @@ export const PieChartConfigSchema = Type.Object({
 });
 
 // GAUGE_CHART — circular gauge, similar shape to AGGREGATE.
+// DEPRECATED / READ-ONLY since v0.8.4: Twenty 2.3 removed gauge support
+// and runs a destructive `delete-gauge-widgets` migration. This schema is
+// retained only so legacy gauge widgets still deserialize on read (the
+// GraphQL union member is preserved upstream for back-compat). It is no
+// longer offered as a creatable configurationType — see
+// ConfigurationTypeSchema. Do NOT add it back to the creation discriminator.
 export const GaugeChartConfigSchema = Type.Object({
   configurationType: Type.Literal("GAUGE_CHART"),
   aggregateFieldMetadataId: Type.String(),
